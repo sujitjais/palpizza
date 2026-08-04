@@ -1,0 +1,2480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pal Pizza</title>
+    
+    <!-- Updated Favicon -->
+    <link rel="icon" type="image/png" href="https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png">
+
+    <!-- Embedded PWA Manifest -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Pal Pizza","short_name":"Pal Pizza","start_url":".","display":"standalone","background_color":"%23f8fafc","theme_color":"%23dc2626","icons":[{"src":"https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png","sizes":"192x192","type":"image/png"}]}'>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Razorpay Standard Web Checkout -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- Leaflet for Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        /* APP-LIKE FEEL */
+        html, body { 
+            height: 100%; width: 100%; margin: 0; padding: 0; 
+            overflow-x: hidden; font-family: 'Inter', sans-serif; 
+            background-color: #f8fafc; 
+            overscroll-behavior-y: none;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none; user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: pan-y;
+        }
+        
+        input, textarea { -webkit-user-select: auto; user-select: auto; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .screen { display: none; animation: fadeIn 0.3s ease; padding-bottom: 180px; }
+        .screen.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 1000; flex-direction: column; justify-content: flex-end; backdrop-filter: blur(2px); }
+        .overlay.active { display: flex; }
+        .bottom-sheet { background: white; border-radius: 24px 24px 0 0; padding: 24px; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); max-height: 90vh; display: flex; flex-direction: column; overflow-y: auto;}
+        .center-modal { background: white; border-radius: 20px; padding: 24px; width: 92%; max-width: 400px; margin: auto; animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); max-height: 90vh; overflow-y: auto; }
+        .full-screen-modal { background: #f8fafc; width: 100%; height: 100%; display: flex; flex-direction: column; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; }
+        .app-loader { position: fixed; inset: 0; z-index: 9999; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease; }
+
+        input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .leaflet-control-attribution { display: none !important; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen relative">
+
+    <!-- Global App Loader -->
+    <div id="app-loader" class="app-loader">
+        <img src="https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png" alt="Pal Pizza" class="h-24 w-24 object-contain rounded-2xl mb-4 shadow-lg animate-pulse">
+        <h1 class="font-black text-3xl tracking-tight leading-none text-red-600 mb-4">Pal Pizza</h1>
+        <div class="w-10 h-10 border-4 border-slate-100 border-t-red-600 rounded-full animate-spin"></div>
+    </div>
+
+    <!-- Shop Closed Screen -->
+    <div id="shop-closed-screen" class="hidden fixed inset-0 bg-slate-50 z-[5000] flex-col items-center justify-center p-6 text-center">
+        <div class="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-5xl mb-6 shadow-inner border-4 border-white">
+            <i class="fa-solid fa-store-slash"></i>
+        </div>
+        <h1 class="font-black text-3xl text-slate-800 mb-2">The shop is closed!</h1>
+        <p class="text-slate-500 font-medium mb-8">We are currently not accepting orders. Please check back later.</p>
+        
+        <div id="shop-closed-contacts" class="space-y-3 w-full max-w-xs">
+            <!-- Contact buttons injected here -->
+        </div>
+
+        <div id="shop-closed-active-orders" class="mt-8 hidden flex-col items-center w-full max-w-xs">
+            <!-- Handled dynamically by JS -->
+        </div>
+    </div>
+
+    <!-- Blocked User Screen -->
+    <div id="user-blocked-screen" class="hidden fixed inset-0 bg-slate-50 z-[9999] flex-col items-center justify-center p-6 text-center">
+        <div class="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-5xl mb-6 shadow-inner border-4 border-white">
+            <i class="fa-solid fa-user-lock"></i>
+        </div>
+        <h1 class="font-black text-3xl text-slate-800 mb-2">Account Blocked</h1>
+        <p class="text-slate-500 font-medium mb-8">You have been blocked due to policy violations. Please contact Pal Pizza to unblock yourself.</p>
+        
+        <div id="blocked-contacts-list" class="space-y-3 w-full max-w-xs">
+            <!-- Contact buttons injected here -->
+        </div>
+        
+        <button onclick="logOutAndReload()" class="mt-8 text-sm font-bold text-slate-400 hover:text-slate-600 underline">Sign Out</button>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white px-4 py-4 sticky top-0 z-40 shadow-sm border-b border-slate-100 flex justify-between items-center" id="main-header">
+        <div class="flex items-center gap-3">
+            <img src="https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png" alt="Pal Pizza" class="h-10 w-10 object-contain rounded-xl shadow-sm border border-slate-100 bg-white">
+            <h1 class="font-black text-2xl tracking-tight leading-none text-red-600">Pal Pizza</h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="header-install-btn" onclick="triggerInstall()" class="hidden bg-green-50 text-green-600 border border-green-200 px-3 py-1.5 rounded-xl font-bold text-xs items-center gap-1 shadow-sm hover:bg-green-100 transition-colors">
+                <i class="fa-solid fa-download"></i> Install
+            </button>
+            <button onclick="openUserProfile()" class="bg-slate-100 hover:bg-slate-200 w-10 h-10 rounded-full text-xl flex items-center justify-center transition-colors shadow-sm">
+                <span id="user-avatar-letter">🐼</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Screens -->
+    <main class="flex-1 w-full max-w-2xl mx-auto p-4 relative" id="main-content">
+        
+        <!-- Screen: Home / Menu -->
+        <div id="screen-home" class="screen active">
+            
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <div class="relative mb-3">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400"></i>
+                    <input type="text" id="menu-search" oninput="updateSearchQuery(this.value)" placeholder="Search pizzas or ingredients..." class="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-3 text-sm outline-none focus:border-red-500 focus:bg-white transition-colors">
+                </div>
+                
+                <div class="flex gap-2 overflow-x-auto hide-scroll pb-1">
+                    <button onclick="openFilterModal()" class="flex items-center justify-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors shrink-0">
+                        <i class="fa-solid fa-sliders"></i> Filter
+                    </button>
+                    <button id="quick-veg-btn" onclick="togglePrefFilter('veg')" class="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm hover:border-green-300 hover:bg-green-50 transition-colors shrink-0">
+                        <span class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm border border-white"></span> Veg
+                    </button>
+                    <button id="quick-nonveg-btn" onclick="togglePrefFilter('nonveg')" class="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm hover:border-red-300 hover:bg-red-50 transition-colors shrink-0">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm border border-white"></span> Non-Veg
+                    </button>
+                </div>
+            </div>
+
+            <div id="home-active-order-container" class="mt-4 hidden"></div>
+
+            <h2 class="font-black text-xl mt-5 mb-4 text-slate-800">Our Menu</h2>
+            <div id="pizza-list" class="grid grid-cols-2 gap-4">
+                <!-- Pizzas dynamically injected here -->
+            </div>
+        </div>
+
+        <!-- Screen: Cart -->
+        <div id="screen-cart" class="screen">
+            <h2 class="font-black text-xl mb-4 text-slate-800">Your Cart</h2>
+            
+            <div id="cart-items-container" class="space-y-4 mb-6"></div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mb-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-location-dot text-red-500"></i> Delivery Address</h3>
+                    <button onclick="openAddressModal()" class="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">Edit</button>
+                </div>
+                <div id="display-address" class="text-sm text-slate-500 font-medium">
+                    No address selected. Please edit to pin your location.
+                </div>
+            </div>
+
+            <div class="bg-white border border-red-100 rounded-2xl p-5 shadow-sm border-t-4 border-t-red-500 mb-6 hidden" id="bill-panel">
+                <h3 class="font-black text-slate-800 mb-4">Bill Details</h3>
+                <div class="flex justify-between items-center mb-2 text-sm text-slate-500 font-medium">
+                    <span>Base Total</span>
+                    <span id="bill-base">₹0.00</span>
+                </div>
+                <div class="flex justify-between items-center mb-2 text-sm text-green-600 font-bold hidden" id="discount-row">
+                    <span>Discount</span>
+                    <span id="bill-discount">- ₹0.00</span>
+                </div>
+                <div class="flex justify-between items-center mb-4 text-sm text-slate-500 font-medium pb-4 border-b border-slate-100">
+                    <span>Delivery Charges <span id="free-del-msg" class="text-[10px] text-green-600 font-bold hidden"></span></span>
+                    <span id="bill-delivery">₹40.00</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="font-black text-lg text-slate-800">To Pay</span>
+                    <span class="font-black text-2xl text-green-600" id="bill-total">₹0.00</span>
+                </div>
+            </div>
+
+            <div id="payment-action-container" class="hidden">
+                <div id="cap-warning-msg" class="bg-red-50 text-red-600 border border-red-100 p-3 rounded-xl text-center text-xs font-bold mb-3 hidden"></div>
+                <button id="proceed-pay-btn" onclick="processPayment()" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black text-lg shadow-lg flex items-center justify-center gap-2 transition-colors">
+                    Proceed to Pay <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <p id="cod-eligible-msg" class="text-xs text-center font-bold text-green-600 mt-3 hidden">
+                    <i class="fa-solid fa-check-circle"></i> Eligible for Cash on Delivery!
+                </p>
+            </div>
+        </div>
+
+        <!-- Screen: History & Active Orders -->
+        <div id="screen-history" class="screen">
+            
+            <div id="login-prompt-history" class="bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-8 text-center hidden">
+                <i class="fa-solid fa-clock-rotate-left text-4xl text-slate-300 mb-3"></i>
+                <h3 class="font-bold text-slate-700 mb-2">Login to view history</h3>
+                <button onclick="openUserProfile()" class="bg-red-50 text-red-600 font-bold px-6 py-2 rounded-xl border border-red-200 hover:bg-red-100 transition-colors">Login Now</button>
+            </div>
+
+            <div id="history-content-container">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-black text-xl text-slate-800">Active Orders</h2>
+                    <button onclick="refreshUserOrdersManual()" id="manual-refresh-btn" class="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm shrink-0 flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-right"></i> Sync
+                    </button>
+                </div>
+                <div id="active-orders-list" class="space-y-3 mb-8">
+                    <p class="text-sm text-slate-400 font-medium bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-center">No active orders.</p>
+                </div>
+
+                <div id="order-history-list" class="space-y-3">
+                    <p class="text-sm text-slate-400 font-medium bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-center">No past orders found.</p>
+                </div>
+            </div>
+
+            <!-- Fixed Footer -->
+            <div id="closed-back-bar" class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 z-40 hidden pb-safe shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
+                <button onclick="returnToClosedScreen()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Closed Screen
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen: About -->
+        <div id="screen-about" class="screen">
+            <h2 class="font-black text-xl mb-4 text-slate-800">About & Contact</h2>
+            
+            <div id="about-contact-box" class="space-y-4 mb-6"></div>
+            
+            <div class="bg-white border border-slate-200 rounded-2xl p-2 shadow-sm mb-6" id="about-modular-list">
+                <p class="text-xs text-slate-400 text-center py-4"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Loading...</p>
+            </div>
+            
+            <div class="mt-4 pt-6 text-center text-xs text-slate-500">
+                <p class="mb-2">Pal Pizza and its parts have been developed by <a href="tel:+919696187223" class="text-blue-600 font-bold hover:underline">Sujit Jaiswal</a> and <a href="https://instagram.com/rajatlfs" target="_blank" class="text-blue-600 font-bold hover:underline">Rajat Gupta</a>.</p>
+                <p>If you want an app for your store too contact Sujit Jaiswal <a href="tel:+919696187223" class="text-blue-600 font-bold whitespace-nowrap hover:underline"><i class="fa-solid fa-phone"></i> +91 9696187223</a></p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Pill Cart UI -->
+    <div id="floating-cart-container" class="fixed bottom-[80px] left-0 right-0 z-40 flex justify-center pointer-events-none transition-transform duration-300 translate-y-[200px]">
+        <div id="floating-cart-btn" onclick="switchTab('cart')" class="bg-green-600 text-white px-5 py-2.5 rounded-full flex items-center gap-3 cursor-pointer pointer-events-auto shadow-2xl border border-green-50 hover:bg-green-700 transition-colors">
+            <div id="float-cart-images" class="flex -space-x-2"></div>
+            <div class="flex flex-col border-l border-green-500/50 pl-3">
+                <span class="font-black text-sm leading-none mb-0.5">View cart</span>
+                <span class="text-[10px] font-bold text-green-100 leading-none tracking-widest uppercase" id="float-qty">1 Item</span>
+            </div>
+            <i class="fa-solid fa-chevron-right ml-1"></i>
+        </div>
+    </div>
+
+    <!-- Bottom Tab Bar -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe z-50" id="bottom-tab-bar">
+        <div class="flex justify-around items-center h-16 max-w-2xl mx-auto relative">
+            <button onclick="switchTab('home')" class="tab-btn flex-1 flex flex-col items-center gap-1 text-slate-400 active-tab-color transition-colors">
+                <i class="fa-solid fa-pizza-slice text-xl"></i>
+                <span class="text-[10px] font-bold">Menu</span>
+            </button>
+            <button onclick="switchTab('cart')" class="tab-btn flex-1 flex flex-col items-center gap-1 text-slate-400 relative transition-colors">
+                <div class="relative inline-block">
+                    <i class="fa-solid fa-cart-shopping text-xl"></i>
+                    <span id="cart-badge" class="absolute -top-1.5 -right-2 bg-red-600 text-white text-[10px] font-black min-w-[18px] h-[18px] rounded-full flex items-center justify-center hidden px-1 border border-white">0</span>
+                </div>
+                <span class="text-[10px] font-bold">Cart</span>
+            </button>
+            <button onclick="switchTab('history')" class="tab-btn flex-1 flex flex-col items-center gap-1 text-slate-400 transition-colors">
+                <div class="relative inline-block">
+                    <i class="fa-solid fa-clock-rotate-left text-xl"></i>
+                    <span id="history-badge" class="absolute -top-1.5 -right-2 bg-blue-600 text-white text-[10px] font-black min-w-[18px] h-[18px] rounded-full flex items-center justify-center hidden px-1 border border-white">0</span>
+                </div>
+                <span class="text-[10px] font-bold">History</span>
+            </button>
+            <button onclick="switchTab('about')" class="tab-btn flex-1 flex flex-col items-center gap-1 text-slate-400 transition-colors">
+                <i class="fa-solid fa-circle-info text-xl"></i>
+                <span class="text-[10px] font-bold">About</span>
+            </button>
+        </div>
+    </div>
+    
+    <style> .active-tab-color { color: #dc2626; } </style>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- PWA Install Prompt Modal -->
+    <div id="install-prompt-modal" class="overlay close-on-click" style="z-index: 3000;">
+        <div class="center-modal text-center flex flex-col items-center relative" onclick="event.stopPropagation()">
+            <button onclick="document.getElementById('install-prompt-modal').classList.remove('active')" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 transition-colors"><i class="fa-solid fa-xmark"></i></button>
+            <img src="https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png" alt="Install Pal Pizza" class="w-20 h-20 object-contain rounded-2xl mx-auto mb-4 drop-shadow-sm">
+            <h3 class="font-black text-xl mb-2 text-slate-800">Get the App!</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed">Install the app to order pizza faster!</p>
+            <button onclick="triggerInstall()" class="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors flex justify-center items-center gap-2 text-lg">
+                Install
+            </button>
+        </div>
+    </div>
+
+    <!-- PWA Success Installed Modal -->
+    <div id="install-success-modal" class="overlay close-on-click" style="z-index: 3000;">
+        <div class="center-modal text-center flex flex-col items-center relative" onclick="event.stopPropagation()">
+            <div class="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-white text-4xl mb-4 shadow-lg border-4 border-green-100"><i class="fa-solid fa-check"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800">App Installed</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed">App has been installed successfully.</p>
+            <button onclick="document.getElementById('install-success-modal').classList.remove('active')" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black shadow-lg transition-colors">Continue</button>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-alert-overlay" class="overlay close-on-click" style="z-index: 2000;">
+        <div class="center-modal text-center flex flex-col items-center" onclick="event.stopPropagation()">
+            <div id="alert-icon" class="text-4xl mb-4 text-red-500"><i class="fa-solid fa-circle-exclamation"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800" id="alert-title">Notice</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed" id="alert-msg">Message</p>
+            <button onclick="closeCustomAlert()" class="bg-slate-900 text-white w-full py-3 rounded-xl font-bold text-base shadow-lg transition-colors hover:bg-slate-800">OK</button>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="custom-confirm-overlay" class="overlay close-on-click" style="z-index: 2000;">
+        <div class="center-modal text-center flex flex-col items-center" onclick="event.stopPropagation()">
+            <div class="text-4xl mb-4 text-red-500"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800">Are you sure?</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed" id="confirm-msg">Confirm action?</p>
+            <div class="flex gap-3 w-full">
+                <button onclick="closeCustomConfirm()" class="flex-1 border border-slate-200 text-slate-600 py-3 rounded-xl font-bold">Cancel</button>
+                <button onclick="executeCustomConfirm()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-black shadow-lg shadow-red-600/30 transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Exists Modal (Signup Failed) -->
+    <div id="account-exists-modal" class="overlay close-on-click" style="z-index: 2000;">
+        <div class="center-modal text-center flex flex-col items-center" onclick="event.stopPropagation()">
+            <div class="text-4xl mb-4 text-red-500"><i class="fa-solid fa-circle-exclamation"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800">Signup Failed</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed">Phone no. already exists please check correctly<br>Already registered? CLICK ON LOGIN</p>
+            <div class="flex gap-3 w-full">
+                <button onclick="document.getElementById('account-exists-modal').classList.remove('active')" class="flex-1 border border-slate-200 text-slate-600 py-3 rounded-xl font-bold transition-colors hover:bg-slate-50">Dismiss</button>
+                <button onclick="document.getElementById('account-exists-modal').classList.remove('active'); toggleAuthView('login')" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-black shadow-lg shadow-red-600/30 transition-colors">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Address Missing Modal -->
+    <div id="address-missing-modal" class="overlay close-on-click" style="z-index: 2000;">
+        <div class="center-modal text-center flex flex-col items-center" onclick="event.stopPropagation()">
+            <div class="text-4xl mb-4 text-red-500"><i class="fa-solid fa-location-dot"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800">Address not selected</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed">Please select a delivery address to proceed.</p>
+            <button onclick="document.getElementById('address-missing-modal').classList.remove('active'); openAddressModal();" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black shadow-lg transition-colors">Select Address</button>
+        </div>
+    </div>
+
+    <!-- Map Pin Missing Modal -->
+    <div id="map-pin-missing-modal" class="overlay close-on-click" style="z-index: 2000;">
+        <div class="center-modal text-center flex flex-col items-center" onclick="event.stopPropagation()">
+            <div class="text-4xl mb-4 text-blue-500"><i class="fa-solid fa-map-location-dot"></i></div>
+            <h3 class="font-black text-xl mb-2 text-slate-800">Location not selected</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium leading-relaxed">Please select your exact location on the map.</p>
+            <button onclick="document.getElementById('map-pin-missing-modal').classList.remove('active'); openFullscreenMap();" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors">Open Map</button>
+        </div>
+    </div>
+
+    <!-- Razorpay Loading Overlay -->
+    <div id="payment-processing-overlay" class="overlay" style="z-index: 5000;">
+        <div class="m-auto bg-white p-8 rounded-3xl flex flex-col items-center shadow-2xl">
+            <div class="w-14 h-14 border-4 border-slate-100 border-t-green-500 rounded-full animate-spin mb-4"></div>
+            <p class="font-black text-slate-800 text-xl tracking-tight">Processing...</p>
+            <p class="text-xs text-slate-500 font-medium mt-1">Please wait while payment is completed.</p>
+        </div>
+    </div>
+
+    <!-- Filter Modal -->
+    <div id="filter-modal" class="overlay close-on-click">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-xl text-slate-800">Sort & Filter</h3>
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="space-y-6 mb-6">
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Sort By</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="sort-btn-low" onclick="setSortFilter('low')" class="border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors">Price: Low to High</button>
+                        <button id="sort-btn-high" onclick="setSortFilter('high')" class="border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors">Price: High to Low</button>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Preference</h4>
+                    <div class="grid grid-cols-3 gap-3">
+                        <button id="pref-btn-all" onclick="setPrefFilter('all')" class="border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors">All</button>
+                        <button id="pref-btn-veg" onclick="setPrefFilter('veg')" class="border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-500"></span> Veg</button>
+                        <button id="pref-btn-nonveg" onclick="setPrefFilter('nonveg')" class="border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span> Non-Veg</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="clearFilters()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-colors">Clear All</button>
+                <button onclick="applyFilters()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors">Apply Filters</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login/Signup Modal -->
+    <div id="auth-modal" class="overlay close-on-click">
+        <div class="bottom-sheet h-[85vh]" onclick="event.stopPropagation()">
+            <div class="flex justify-end mb-2">
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="flex-1 flex flex-col px-2">
+                <div class="text-center mb-8">
+                    <img src="https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png" alt="Pal Pizza" class="h-16 w-16 object-contain mx-auto mb-4 drop-shadow-sm">
+                    <h2 class="font-black text-2xl text-slate-800 tracking-tight">Welcome to Pal Pizza</h2>
+                    <p class="text-slate-500 mt-2 font-medium text-sm">Login or create an account to start ordering.</p>
+                </div>
+
+                <div id="auth-form-container" class="space-y-4 w-full">
+                    <!-- Login View -->
+                    <div id="login-view" class="hidden">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Phone Number</label>
+                        <input type="tel" id="auth-login-phone" placeholder="Enter 10-digit number" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm outline-none mb-4 focus:border-red-400 transition-colors" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0,10)">
+                        
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Password</label>
+                        <input type="password" id="auth-login-pass" placeholder="Enter password" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm outline-none mb-4 focus:border-red-400 transition-colors">
+                        
+                        <div class="flex items-start gap-2 mb-6">
+                            <input type="checkbox" id="auth-login-terms" class="mt-0.5 w-4 h-4 accent-red-600 shrink-0 cursor-pointer">
+                            <div class="text-[10px] font-bold text-slate-500 leading-tight">
+                                I agree to the <button type="button" onclick="openAboutPopup('Terms and Conditions')" class="text-blue-600 hover:underline">Terms and Conditions</button> and <button type="button" onclick="openAboutPopup('Privacy Policy')" class="text-blue-600 hover:underline">Privacy Policy</button>
+                            </div>
+                        </div>
+
+                        <button id="login-btn" onclick="loginUser()" class="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors mb-4">Login</button>
+                        <p class="text-center text-sm font-medium text-slate-500">Don't have an account? <button onclick="toggleAuthView('signup')" class="text-blue-600 font-bold hover:underline">Sign up</button></p>
+                    </div>
+
+                    <!-- Signup View -->
+                    <div id="signup-view">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Full Name</label>
+                        <input type="text" id="auth-signup-name" placeholder="John Doe" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm outline-none mb-4 focus:border-red-400 transition-colors">
+                        
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Phone Number</label>
+                        <input type="tel" id="auth-signup-phone" placeholder="Enter 10-digit number" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm outline-none mb-4 focus:border-red-400 transition-colors" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0,10)">
+                        
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Create Password</label>
+                        <input type="password" id="auth-signup-pass" placeholder="Choose a password" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm outline-none mb-4 focus:border-red-400 transition-colors">
+                        
+                        <div class="flex items-start gap-2 mb-6">
+                            <input type="checkbox" id="auth-signup-terms" class="mt-0.5 w-4 h-4 accent-red-600 shrink-0 cursor-pointer">
+                            <div class="text-[10px] font-bold text-slate-500 leading-tight">
+                                I agree to the <button type="button" onclick="openAboutPopup('Terms and Conditions')" class="text-blue-600 hover:underline">Terms and Conditions</button> and <button type="button" onclick="openAboutPopup('Privacy Policy')" class="text-blue-600 hover:underline">Privacy Policy</button>
+                            </div>
+                        </div>
+
+                        <button id="signup-btn" onclick="signupUser()" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black shadow-lg transition-colors mb-4">Create Account</button>
+                        <p class="text-center text-sm font-medium text-slate-500">Already have an account? <button onclick="toggleAuthView('login')" class="text-blue-600 font-bold hover:underline">Login</button></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Centered Pizza Details Modal -->
+    <div id="pizza-details-modal" class="overlay close-on-click">
+        <div class="flex flex-col items-center justify-center m-auto w-full gap-3 pb-[10vh] pointer-events-none">
+            <div class="center-modal !p-0 overflow-hidden relative w-[92%] max-w-sm !m-0 pointer-events-auto" onclick="event.stopPropagation()">
+                <div class="relative">
+                    <img id="det-img" src="" class="w-full aspect-video object-cover bg-slate-100" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg=='">
+                    <button onclick="closePopups()" class="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors backdrop-blur-md z-10"><i class="fa-solid fa-xmark"></i></button>
+                    <div id="det-veg" class="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-lg shadow-md flex items-center gap-1.5 border border-slate-100 z-10"></div>
+                </div>
+                
+                <div class="p-5">
+                    <h2 id="det-title" class="font-black text-xl text-slate-800 leading-tight mb-2">Pizza Name</h2>
+                    <p id="det-ing" class="text-xs text-slate-500 mb-6 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">Ingredients...</p>
+                    
+                    <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Price</span>
+                            <div class="flex items-baseline gap-2">
+                                <p id="det-price" class="text-2xl font-black text-slate-900">₹0</p>
+                                <p id="det-old-price" class="text-sm text-slate-400 line-through">₹0</p>
+                            </div>
+                        </div>
+                        <div id="det-action-container"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- View Cart Banner -->
+            <div id="det-view-cart-banner" class="hidden w-[92%] max-w-sm bg-green-600 text-white px-5 py-4 rounded-xl shadow-lg flex justify-between items-center cursor-pointer hover:bg-green-700 transition-colors pointer-events-auto" onclick="event.stopPropagation(); closePopups(); switchTab('cart')">
+                <span class="font-black text-sm">View Cart</span>
+                <div class="flex items-center gap-2">
+                    <span id="det-cart-qty-text" class="text-[10px] font-bold text-green-100 uppercase tracking-widest">0 Items</span>
+                    <i class="fa-solid fa-chevron-right text-sm"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Order Details Popup -->
+    <div id="active-order-details-modal" class="overlay close-on-click">
+        <div class="center-modal !p-0 overflow-hidden relative w-[92%] max-w-md" onclick="event.stopPropagation()">
+            <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <div>
+                    <h3 class="font-black text-lg text-slate-800 leading-none">Order Details</h3>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1" id="aod-date">Today</p>
+                </div>
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="p-5 space-y-5">
+                <div class="flex justify-between items-center bg-blue-50 border border-blue-100 p-3 rounded-xl">
+                    <span class="text-xs font-bold text-blue-800 uppercase tracking-wider">Status</span>
+                    <span class="font-black text-blue-600 capitalize text-lg" id="aod-status">Making</span>
+                </div>
+
+                <div>
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-1">Items Ordered</h4>
+                    <div id="aod-items" class="space-y-2 text-sm text-slate-700 font-medium"></div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">Bill Summary</h4>
+                    <div class="flex justify-between text-xs mb-2"><span>Subtotal</span><span id="aod-subtotal">₹0</span></div>
+                    <div class="flex justify-between text-xs mb-2"><span>Delivery Fee</span><span id="aod-fee">₹0</span></div>
+                    <div class="flex justify-between font-black text-sm pt-2 border-t border-slate-200"><span>Total Paid</span><span id="aod-total" class="text-green-600">₹0</span></div>
+                </div>
+
+                <div id="aod-pin-panel" class="bg-red-50 border border-red-100 p-4 rounded-xl text-center">
+                    <p class="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-1">Delivery PIN</p>
+                    <p class="font-black text-4xl tracking-widest text-slate-900" id="aod-pin">----</p>
+                </div>
+
+                <div id="aod-contact-panel" class="bg-slate-50 p-3 rounded-xl flex justify-between items-center border border-slate-100">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest" id="aod-contact-role">Store Counter</span>
+                        <span class="font-bold text-sm text-slate-800" id="aod-contact-name">Pal Pizza</span>
+                    </div>
+                    <a href="#" id="aod-contact-btn" class="w-10 h-10 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-full flex items-center justify-center transition-colors shadow-sm">
+                        <i class="fa-solid fa-phone"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div id="user-modal" class="overlay close-on-click">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-black text-xl text-slate-800">My Profile</h3>
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="flex justify-center mb-6">
+                <div class="w-20 h-20 bg-slate-50 rounded-full text-4xl font-black text-slate-600 border border-slate-200 flex items-center justify-center shadow-sm">
+                    <span id="modal-avatar-letter">🐼</span>
+                </div>
+            </div>
+
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Full Name</label>
+                    <input type="text" id="prof-name" class="w-full border-b border-slate-200 py-2 outline-none font-bold text-slate-800 text-sm focus:border-red-500 transition-colors">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Phone Number</label>
+                    <input type="tel" id="prof-phone" readonly class="w-full border-b border-slate-200 py-2 outline-none font-bold text-sm text-slate-400 bg-slate-50 cursor-not-allowed" title="Phone number cannot be changed">
+                </div>
+            </div>
+
+            <div class="mb-6 border border-slate-200 rounded-xl p-4 bg-slate-50">
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest"><i class="fa-solid fa-location-dot mr-1"></i> Saved Address</h4>
+                    <button onclick="openAddressModal()" class="text-xs font-bold text-blue-600 hover:underline">Edit</button>
+                </div>
+                <div id="prof-display-address" class="text-sm text-slate-700 font-medium">
+                    No address saved.
+                </div>
+            </div>
+
+            <button onclick="saveProfile()" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-xl font-bold mb-4 shadow-lg transition-colors">Save Changes</button>
+            
+            <button onclick="switchTab('about'); closePopups();" class="w-full bg-white border border-slate-200 text-slate-700 py-3.5 rounded-xl font-bold transition-colors flex items-center justify-between px-4 mb-4 shadow-sm hover:bg-slate-50">
+                <span class="flex items-center gap-2"><i class="fa-solid fa-headset text-blue-500"></i> Contact Us / About</span>
+                <i class="fa-solid fa-chevron-right text-slate-400"></i>
+            </button>
+
+            <div class="flex gap-3 pt-4 border-t border-slate-100">
+                <button onclick="logOut()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 text-sm shadow-sm">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Log Out
+                </button>
+                <button onclick="deleteAccount()" class="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 text-sm shadow-sm border border-red-100">
+                    <i class="fa-solid fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Dynamic Section Modal -->
+    <div id="about-details-modal" class="overlay close-on-click" style="z-index: 4000;">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                <h3 class="font-black text-xl text-slate-800" id="about-details-title">Title</h3>
+                <button onclick="document.getElementById('about-details-modal').classList.remove('active')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="text-sm text-slate-600 space-y-3 leading-relaxed whitespace-pre-wrap" id="about-details-content">
+                <!-- Dynamic Content Injected Here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Simple Address Form Modal -->
+    <div id="address-form-modal" class="overlay close-on-click">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-xl text-slate-800">Delivery Location</h3>
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+
+            <!-- Open Full Screen Map Banner -->
+            <div id="map-banner" onclick="openFullscreenMap()" class="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-5 flex justify-between items-center cursor-pointer shadow-sm hover:bg-blue-100 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div id="map-banner-icon" class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 shadow-sm border border-blue-100 shrink-0">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                    </div>
+                    <div>
+                        <p id="map-banner-title" class="font-black text-blue-900 text-sm">Choose on Map</p>
+                        <p id="map-banner-sub" class="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Tap to set exact location</p>
+                    </div>
+                </div>
+                <i class="fa-solid fa-chevron-right text-blue-400"></i>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-5">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Full Address (Required)</label>
+                    <input type="text" id="addr-full" placeholder="e.g. Flat 201, Green View Apt" class="w-full border-b border-slate-200 py-2 text-sm outline-none font-bold text-slate-800 focus:border-red-500 transition-colors">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">City (Required)</label>
+                        <input type="text" id="addr-city" placeholder="City Name" class="w-full border-b border-slate-200 py-2 text-sm outline-none font-bold text-slate-800 focus:border-red-500 transition-colors">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pincode (Required)</label>
+                        <input type="tel" id="addr-pin" placeholder="6 Digits" maxlength="6" class="w-full border-b border-slate-200 py-2 text-sm outline-none font-bold text-slate-800 focus:border-red-500 transition-colors" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0,6)">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nearby Landmark (Optional)</label>
+                    <input type="text" id="addr-landmark" placeholder="e.g. Behind SBI Bank" class="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium text-slate-600 focus:border-red-500 transition-colors">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Delivery Instructions (Optional)</label>
+                    <input type="text" id="addr-inst" placeholder="e.g. Ring the bell twice" class="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium text-slate-600 focus:border-red-500 transition-colors">
+                </div>
+                <button id="save-addr-btn" onclick="saveAddress()" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black shadow-lg mt-2 transition-colors">Confirm Address</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full Screen Interactive Map Modal (TAP TO PIN) -->
+    <div id="map-fullscreen-modal" class="overlay">
+        <div class="full-screen-modal bg-slate-100 relative">
+            <div class="absolute top-4 left-4 z-[400]">
+                <button onclick="closeMapFullscreen()" class="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-slate-700 hover:bg-slate-50"><i class="fa-solid fa-arrow-left"></i></button>
+            </div>
+            
+            <div id="map" class="w-full h-full z-0 !rounded-none"></div>
+            
+            <button id="locate-me-btn" onclick="locateMe()" class="absolute bottom-[200px] right-4 z-[400] bg-white px-4 h-12 rounded-full shadow-lg flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-colors font-bold text-xs gap-2">
+                <i class="fa-solid fa-location-crosshairs text-lg"></i>
+            </button>
+            
+            <div class="absolute bottom-0 left-0 right-0 bg-white p-5 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.1)] z-[400] pb-safe rounded-t-3xl border-t border-slate-100">
+                <h3 class="font-black text-slate-800 text-lg mb-1 text-center">Set Exact Location</h3>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest text-center mb-5">TAP THE MAP TO DROP THE PIN</p>
+                <button onclick="confirmMapLocation()" class="w-full bg-red-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-red-600/30 active:scale-95 transition-transform">Confirm Map Pin</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Choice Modal -->
+    <div id="payment-choice-modal" class="overlay close-on-click">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-black text-xl text-slate-800">Payment Method</h3>
+                <button onclick="closePopups()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="space-y-3">
+                <button id="pay-online-btn" onclick="initRazorpay()" class="w-full bg-white border border-slate-200 p-4 rounded-xl flex items-center justify-between shadow-sm hover:border-blue-400 transition-colors group">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-credit-card"></i></div>
+                        <div class="text-left">
+                            <p class="font-bold text-slate-800 text-sm">Pay Online (UPI, Cards)</p>
+                            <p class="text-[10px] text-slate-400 font-medium">Secured by Razorpay</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-blue-500"></i>
+                </button>
+
+                <button id="btn-cod" onclick="placeOrderCOD()" class="hidden w-full bg-white border border-slate-200 p-4 rounded-xl flex items-center justify-between shadow-sm hover:border-green-400 transition-colors group">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-green-50 text-green-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-money-bill"></i></div>
+                        <div class="text-left">
+                            <p class="font-bold text-slate-800 text-sm">Cash on Delivery</p>
+                            <p class="text-[10px] text-slate-400 font-medium">Pay when it arrives</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-green-500"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // PWA ENGINE
+        let deferredPrompt;
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+
+        if ('serviceWorker' in navigator && !isStandalone) {
+            const swCode = "self.addEventListener('install', (e) => self.skipWaiting()); self.addEventListener('activate', (e) => self.clients.claim()); self.addEventListener('fetch', (e) => {});";
+            const blob = new Blob([swCode], {type: 'application/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.error);
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            if (!isStandalone) {
+                document.getElementById('header-install-btn').classList.remove('hidden');
+                document.getElementById('header-install-btn').classList.add('flex');
+                document.getElementById('install-prompt-modal').classList.add('active');
+            }
+        });
+
+        window.addEventListener('appinstalled', (evt) => {
+            localStorage.setItem('pal_is_installed', 'true');
+            document.getElementById('header-install-btn').classList.add('hidden');
+            document.getElementById('header-install-btn').classList.remove('flex');
+            document.getElementById('install-prompt-modal').classList.remove('active');
+            document.getElementById('install-success-modal').classList.add('active');
+            deferredPrompt = null;
+        });
+
+        function triggerInstall() {
+            document.getElementById('install-prompt-modal').classList.remove('active');
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => { deferredPrompt = null; });
+            }
+        }
+
+
+        // CONFIG
+        const SUPABASE_URL = "https://ahlbrwlwtvbwbvgjpkvz.supabase.co"; 
+        const SUPABASE_ANON_KEY = "sb_publishable_v_N4j_KvpqbgDt35WpI2GQ_8AakOdwT"; 
+        const STORE_COORDS = [27.1984011, 83.6460579];
+        const RAZORPAY_KEY_ID = "rzp_live_TLFddGIe00GXFt"; 
+        
+        let supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let user = null;
+        let menuData = [];
+        let aboutSections = [];
+        let cart = {}; 
+        let storeSettings = { delivery_range: 5, is_open: true, charge_per_km: 0, cap_dist: 2, min_cap_amount: 500, free_delivery_above: 0, phones: [], emails: [], addresses: [] }; 
+        
+        let deliveryFee = 0; 
+        let pastOrdersCount = 0;
+        let activeOrders = []; 
+        let userOrders = []; // Cached securely
+        let counterPhone = null;
+        let menuState = { query: '', sort: '', pref: 'all' };
+        let activeOrderPollInterval = null;
+
+        // Map variables
+        let map, userMarker;
+        let currentCoords = null;
+        let tempDistance = 0;
+        let isWithinRange = false;
+        let addressDetails = null;
+        const animalIcons = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🦝','🐧','🦆','🦥'];
+
+        window.onload = async () => {
+            loadCart(); 
+            await checkAuth(); 
+
+            // Pre-fetch user order history so activeOrders is known before closed-screen check
+            if (user) {
+                await fetchOrderHistory();
+            }
+            
+            await fetchSettings();
+            subscribeToStoreStatus();
+            
+            if (storeSettings.is_open === false) {
+                showShopClosedScreen();
+                setTimeout(() => { document.getElementById('app-loader').style.display = 'none'; }, 500);
+                return;
+            }
+
+            await fetchAboutSections();
+            await fetchCounterPhone();
+            await fetchMenu(); 
+            
+            // Re-sync logic: Prevents DevTools Cart tampering on load
+            syncCartWithServer();
+            
+            updateFloatingCart();
+            renderCart();
+
+            if (user) {
+                subscribeToOrders(); 
+                subscribeToUserAuth();
+                startOrderPolling();
+            }
+            
+            setTimeout(() => {
+                const loader = document.getElementById('app-loader');
+                loader.style.opacity = '0';
+                setTimeout(() => loader.style.display = 'none', 500);
+            }, 1000);
+        };
+
+        function startOrderPolling() {
+            if (activeOrderPollInterval) clearInterval(activeOrderPollInterval);
+            activeOrderPollInterval = setInterval(async () => {
+                if (user && activeOrders.length > 0) {
+                    await fetchOrderHistory();
+                }
+            }, 10000);
+        }
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                if (user) {
+                    await fetchOrderHistory();
+                }
+                await fetchSettings();
+            }
+        });
+
+        window.addEventListener('online', async () => {
+            if (user) {
+                await fetchOrderHistory();
+            }
+            await fetchSettings();
+        });
+
+        function syncCartWithServer() {
+            let cartModified = false;
+            Object.keys(cart).forEach(id => {
+                const pizza = menuData.find(p => p.id === id);
+                if (pizza) {
+                    let realSellPrice = Math.round(getSellPrice(pizza));
+                    if (cart[id].sellPrice !== realSellPrice || cart[id].data.price !== pizza.price) {
+                        cart[id].sellPrice = realSellPrice;
+                        cart[id].data = pizza; 
+                        cartModified = true;
+                    }
+                } else {
+                    delete cart[id];
+                    cartModified = true;
+                }
+            });
+            if (cartModified) {
+                saveCart();
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if(e.target.classList.contains('close-on-click')) {
+                e.target.classList.remove('active'); 
+            }
+        });
+
+        // --- REAL-TIME LISTENERS ---
+        function subscribeToStoreStatus() {
+            supabaseClient
+              .channel('public-store-status')
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, payload => {
+                 fetchSettings().then(() => {
+                     if (storeSettings.is_open === false) {
+                         showShopClosedScreen();
+                     } else {
+                         if(!document.getElementById('shop-closed-screen').classList.contains('hidden') || !document.getElementById('closed-back-bar').classList.contains('hidden')) {
+                             window.location.reload();
+                         }
+                     }
+                 });
+              })
+              .subscribe();
+        }
+
+        function subscribeToUserAuth() {
+            if(!user) return;
+            supabaseClient
+              .channel(`user-auth-${user.id}`)
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users', filter: `id=eq.${user.id}` }, payload => {
+                 if (payload.eventType === 'DELETE' || (payload.eventType === 'UPDATE' && payload.new.is_deleted === true)) {
+                     alert("Your account has been deleted.");
+                     logOutAndReload();
+                 } else if (payload.eventType === 'UPDATE') {
+                     if (payload.new.is_blocked) {
+                         showBlockedScreen();
+                     } else if (!document.getElementById('user-blocked-screen').classList.contains('hidden')) {
+                         hideBlockedScreen();
+                     }
+                 }
+              })
+              .subscribe();
+        }
+
+        function subscribeToOrders() {
+            if(!user) return;
+            supabaseClient
+              .channel(`user-orders-${user.id}`)
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` }, payload => {
+                 fetchOrderHistory(); 
+              })
+              .subscribe();
+        }
+
+
+        // --- UI SCREENS & POPUPS ---
+        function showShopClosedScreen() {
+            document.getElementById('main-header').style.display = 'none';
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('bottom-tab-bar').style.display = 'none';
+            document.getElementById('floating-cart-container').style.display = 'none';
+            closePopups();
+            
+            const closedScreen = document.getElementById('shop-closed-screen');
+            closedScreen.classList.remove('hidden');
+            closedScreen.classList.add('flex');
+            
+            const phonesBox = document.getElementById('shop-closed-contacts');
+            phonesBox.innerHTML = '';
+            if(storeSettings.phones && storeSettings.phones.length > 0) {
+                storeSettings.phones.forEach(p => {
+                    phonesBox.innerHTML += `<a href="tel:${p}" class="w-full bg-white border border-slate-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm text-slate-700 hover:bg-slate-50"><i class="fa-solid fa-phone text-blue-500"></i> ${p}</a>`;
+                });
+            } else {
+                phonesBox.innerHTML = '<p class="text-sm text-slate-400">No contact numbers available.</p>';
+            }
+
+            const activeOrdersBox = document.getElementById('shop-closed-active-orders');
+            if (user && activeOrders && activeOrders.length > 0) {
+                activeOrdersBox.innerHTML = `
+                    <p class="font-black text-red-600 mb-3 text-sm animate-pulse">You have active orders!</p>
+                    <button onclick="viewActiveOrdersWhileClosed()" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-black shadow-lg flex items-center justify-center gap-2 transition-colors">
+                        View Active Orders <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                `;
+                activeOrdersBox.classList.remove('hidden');
+                activeOrdersBox.classList.add('flex');
+            } else {
+                activeOrdersBox.classList.add('hidden');
+                activeOrdersBox.classList.remove('flex');
+            }
+        }
+
+        function viewActiveOrdersWhileClosed() {
+            const closedScreen = document.getElementById('shop-closed-screen');
+            closedScreen.classList.add('hidden');
+            closedScreen.classList.remove('flex');
+            
+            document.getElementById('main-content').style.display = 'block';
+            
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-history').classList.add('active');
+            
+            const pastOrdersList = document.getElementById('order-history-list');
+            if(pastOrdersList) pastOrdersList.style.display = 'none';
+            
+            document.getElementById('closed-back-bar').classList.remove('hidden');
+        }
+
+        function returnToClosedScreen() {
+            document.getElementById('closed-back-bar').classList.add('hidden');
+            
+            const pastOrdersList = document.getElementById('order-history-list');
+            if(pastOrdersList) pastOrdersList.style.display = 'block';
+            
+            showShopClosedScreen();
+        }
+
+        function showBlockedScreen() {
+            document.getElementById('main-header').style.display = 'none';
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('bottom-tab-bar').style.display = 'none';
+            document.getElementById('floating-cart-container').style.display = 'none';
+            closePopups();
+            
+            const blockedScreen = document.getElementById('user-blocked-screen');
+            blockedScreen.classList.remove('hidden');
+            blockedScreen.classList.add('flex');
+            
+            const contactsDiv = document.getElementById('blocked-contacts-list');
+            contactsDiv.innerHTML = '';
+            storeSettings.phones.forEach(p => {
+                contactsDiv.innerHTML += `<a href="tel:${p}" class="bg-white border border-slate-200 text-slate-700 font-bold py-3 px-6 rounded-xl shadow-sm flex items-center justify-center gap-2 hover:bg-slate-50"><i class="fa-solid fa-phone text-blue-500"></i> ${p}</a>`;
+            });
+        }
+        
+        function hideBlockedScreen() { window.location.reload(); }
+
+        function showCustomAlert(msg, title = "Notice", isError = false) {
+            document.getElementById('alert-msg').innerText = msg;
+            document.getElementById('alert-title').innerText = title;
+            const icon = document.getElementById('alert-icon');
+            if(isError) {
+                icon.className = "text-4xl mb-4 text-red-500";
+                icon.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+            } else {
+                icon.className = "text-4xl mb-4 text-blue-500";
+                icon.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+            }
+            document.getElementById('custom-alert-overlay').classList.add('active');
+        }
+        function closeCustomAlert() { document.getElementById('custom-alert-overlay').classList.remove('active'); }
+
+        let customConfirmCallback = null;
+        function showCustomConfirm(msg, callback) {
+            document.getElementById('confirm-msg').innerText = msg;
+            customConfirmCallback = callback;
+            document.getElementById('custom-confirm-overlay').classList.add('active');
+        }
+        function closeCustomConfirm() { document.getElementById('custom-confirm-overlay').classList.remove('active'); customConfirmCallback = null; }
+        function executeCustomConfirm() { if(customConfirmCallback) customConfirmCallback(); closeCustomConfirm(); }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        function closePopups() {
+            document.querySelectorAll('.overlay').forEach(o => o.classList.remove('active'));
+        }
+        
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        
+        function highlightMatch(text, query) {
+            if (!text) return '';
+            if (!query) return escapeHTML(text);
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
+            return parts.map(part => {
+                if (part.toLowerCase() === query.toLowerCase()) {
+                    return `<span class="text-blue-600 font-black">${escapeHTML(part)}</span>`;
+                } else {
+                    return escapeHTML(part);
+                }
+            }).join('');
+        }
+
+        // --- Auth & Profile Logic ---
+        async function checkAuth() {
+            const storedUser = localStorage.getItem('pal_user');
+            if(storedUser) {
+                user = JSON.parse(storedUser);
+                
+                const { data, error } = await supabaseClient.rpc('check_user_status', { req_id: user.id });
+                
+                if(error || !data || data.length === 0 || data[0].is_deleted === true) {
+                    logOutAndReload();
+                    return;
+                }
+                if(data[0].is_blocked) {
+                    showBlockedScreen();
+                    return;
+                }
+
+                populateProfileUI();
+                if(user.saved_address) {
+                    addressDetails = user.saved_address;
+                    updateAddressUI();
+                }
+
+                document.getElementById('login-prompt-history').classList.add('hidden');
+                document.getElementById('history-content-container').classList.remove('hidden');
+            } else {
+                user = null;
+                document.getElementById('user-avatar-letter').innerText = 'U';
+                document.getElementById('login-prompt-history').classList.remove('hidden');
+                document.getElementById('history-content-container').classList.add('hidden');
+            }
+        }
+
+        function populateProfileUI() {
+            if(!user) return;
+            const animal = animalIcons[user.name.length % animalIcons.length];
+            document.getElementById('user-avatar-letter').innerText = animal;
+            document.getElementById('modal-avatar-letter').innerText = animal;
+            document.getElementById('prof-name').value = user.name;
+            document.getElementById('prof-phone').value = user.phone;
+        }
+
+        function toggleAuthView(view) {
+            if(view === 'signup') {
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('signup-view').classList.remove('hidden');
+            } else {
+                document.getElementById('signup-view').classList.add('hidden');
+                document.getElementById('login-view').classList.remove('hidden');
+            }
+        }
+
+        async function loginUser() {
+            const phone = document.getElementById('auth-login-phone').value.trim();
+            const pass = document.getElementById('auth-login-pass').value.trim();
+            if(!phone || !pass) return showCustomAlert("Please enter phone and password.", "Login Failed", true);
+            
+            if(!document.getElementById('auth-login-terms').checked) {
+                return showCustomAlert("You must agree to the Terms and Conditions and Privacy Policy to login.", "Required", true);
+            }
+
+            const btn = document.getElementById('login-btn');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+
+            const { data: rpcData, error } = await supabaseClient.rpc('secure_login', { login_phone: phone, login_pass: pass });
+            const data = rpcData && rpcData.length > 0 ? rpcData[0] : null;
+            
+            btn.innerHTML = 'Login';
+            btn.disabled = false;
+
+            if(error || !data) {
+                showCustomAlert("Invalid credentials. Please try again.", "Login Failed", true);
+            } else if (data.is_blocked) {
+                showCustomAlert("This account has been blocked.", "Access Denied", true);
+            } else {
+                user = data;
+                localStorage.setItem('pal_user', JSON.stringify(user));
+                populateProfileUI();
+                
+                if(user.saved_address) {
+                    addressDetails = user.saved_address;
+                    updateAddressUI();
+                }
+
+                document.getElementById('login-prompt-history').classList.add('hidden');
+                document.getElementById('history-content-container').classList.remove('hidden');
+                await fetchOrderHistory();
+                subscribeToOrders();
+                subscribeToUserAuth();
+                startOrderPolling();
+                closePopups();
+                
+                if(document.getElementById('screen-cart').classList.contains('active')) {
+                    processPayment();
+                }
+            }
+        }
+
+        async function signupUser() {
+            const name = document.getElementById('auth-signup-name').value.trim();
+            const phone = document.getElementById('auth-signup-phone').value.trim();
+            const pass = document.getElementById('auth-signup-pass').value.trim();
+            
+            if(!name || !phone || !pass) return showCustomAlert("All fields are required.", "Signup Failed", true);
+            if(phone.length !== 10 || !/^\d+$/.test(phone)) return showCustomAlert("Phone number must be exactly 10 digits.", "Signup Failed", true);
+            
+            if(!document.getElementById('auth-signup-terms').checked) {
+                return showCustomAlert("You must agree to the Terms and Conditions and Privacy Policy to create an account.", "Required", true);
+            }
+
+            const btn = document.getElementById('signup-btn');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+
+            // FIX: Use the secure RPC function to check if the phone exists since public selects are blocked
+            const { data: phoneExists } = await supabaseClient.rpc('check_phone_exists', { check_phone: phone });
+            
+            if(phoneExists) {
+                btn.innerHTML = 'Create Account';
+                btn.disabled = false;
+                document.getElementById('account-exists-modal').classList.add('active');
+                return;
+            }
+
+            const newUser = { id: generateUUID(), role: 'customer', name: name, phone: phone, password: pass };
+
+            const { error } = await supabaseClient.from('app_users').insert([newUser]);
+            
+            btn.innerHTML = 'Create Account';
+            btn.disabled = false;
+
+            if(error) {
+                showCustomAlert("Error creating account: " + error.message, "Signup Failed", true);
+            } else {
+                user = newUser;
+                localStorage.setItem('pal_user', JSON.stringify(user));
+                populateProfileUI();
+                document.getElementById('login-prompt-history').classList.add('hidden');
+                document.getElementById('history-content-container').classList.remove('hidden');
+                fetchOrderHistory();
+                subscribeToOrders();
+                subscribeToUserAuth();
+                startOrderPolling();
+                closePopups();
+                
+                if(document.getElementById('screen-cart').classList.contains('active')) {
+                    processPayment();
+                }
+            }
+        }
+
+        function logOut() {
+            showCustomConfirm("Are you sure you want to log out?", () => { logOutAndReload(); });
+        }
+        
+        function logOutAndReload() {
+            user = null;
+            if (activeOrderPollInterval) clearInterval(activeOrderPollInterval);
+            localStorage.removeItem('pal_user');
+            window.location.reload();
+        }
+
+        function deleteAccount() {
+            showCustomConfirm("Are you sure you want to delete your account? You will lose access to active orders.", async () => {
+                if(!user) return;
+                const { error } = await supabaseClient.rpc('delete_user_account', { req_id: user.id, req_pass: user.password });
+                if(error) {
+                    showCustomAlert("Failed to delete account. " + error.message, "Error", true);
+                } else {
+                    logOutAndReload();
+                }
+            });
+        }
+
+        async function saveProfile() {
+            if(!user) return;
+            const newName = document.getElementById('prof-name').value.trim();
+            if(!newName) return showCustomAlert("Name cannot be empty.", "Error", true);
+            
+            const { error } = await supabaseClient.rpc('update_user_name', { req_id: user.id, new_name: newName, req_pass: user.password });
+            if(!error) {
+                user.name = newName;
+                localStorage.setItem('pal_user', JSON.stringify(user));
+                populateProfileUI();
+                closePopups();
+                showCustomAlert("Profile updated successfully.", "Success");
+            } else {
+                showCustomAlert("Failed to update profile. " + error.message, "Error", true);
+            }
+        }
+
+        function openUserProfile() {
+            if(!user) document.getElementById('auth-modal').classList.add('active');
+            else document.getElementById('user-modal').classList.add('active');
+        }
+
+        // --- Navigation ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(`screen-${tabId}`).classList.add('active');
+            
+            const tabs = document.querySelectorAll('.tab-btn');
+            tabs.forEach(t => t.classList.remove('active-tab-color'));
+            
+            if(tabId === 'home') tabs[0].classList.add('active-tab-color');
+            if(tabId === 'cart') tabs[1].classList.add('active-tab-color');
+            if(tabId === 'history') tabs[2].classList.add('active-tab-color');
+            if(tabId === 'about') tabs[3].classList.add('active-tab-color');
+
+            updateFloatingCart();
+        }
+
+        // --- Data Fetching ---
+        async function fetchSettings() {
+            const { data } = await supabaseClient.from('store_settings').select('*').eq('id', 1).single();
+            if(data) {
+                storeSettings.is_open = data.is_open !== null ? data.is_open : true;
+                storeSettings.delivery_range = data.delivery_range || 5;
+                storeSettings.charge_per_km = data.delivery_charge_per_km || 0;
+                storeSettings.cap_dist = data.capping_distance || 2;
+                storeSettings.min_cap_amount = data.min_delivery_amount_capped || 500;
+                storeSettings.free_delivery_above = data.free_delivery_above || 0;
+                
+                try { storeSettings.phones = data.contact_phone ? JSON.parse(data.contact_phone) : []; } catch(e){}
+                try { storeSettings.emails = data.contact_email ? JSON.parse(data.contact_email) : []; } catch(e){}
+                try { storeSettings.addresses = data.store_address ? JSON.parse(data.store_address) : []; } catch(e){}
+                
+                renderAboutContact();
+            }
+        }
+
+        function renderAboutContact() {
+            const content = document.getElementById('about-contact-box');
+            let html = '';
+            
+            if(storeSettings.addresses && storeSettings.addresses.length > 0) {
+                html += `<div class="flex items-start gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100"><i class="fa-solid fa-location-dot text-red-500 mt-1"></i><div><h4 class="font-bold text-slate-800 text-sm mb-1">Store Address</h4>`;
+                storeSettings.addresses.forEach(a => html += `<p class="text-xs text-slate-600 mb-1">${escapeHTML(a)}</p>`);
+                html += `</div></div>`;
+            }
+            
+            if(storeSettings.phones && storeSettings.phones.length > 0) {
+                html += `<div class="flex items-start gap-3 bg-blue-50 p-4 rounded-xl border border-blue-100"><i class="fa-solid fa-phone text-blue-600 mt-1"></i><div class="w-full"><h4 class="font-bold text-slate-800 text-sm mb-2">Phone Numbers</h4><div class="space-y-2">`;
+                storeSettings.phones.forEach(p => html += `<a href="tel:${p}" class="block bg-white text-blue-700 font-bold text-sm py-2 px-3 rounded-lg shadow-sm border border-blue-100 text-center">${escapeHTML(p)}</a>`);
+                html += `</div></div></div>`;
+            }
+            
+            if(storeSettings.emails && storeSettings.emails.length > 0) {
+                html += `<div class="flex items-start gap-3 bg-purple-50 p-4 rounded-xl border border-purple-100"><i class="fa-solid fa-envelope text-purple-600 mt-1"></i><div class="w-full"><h4 class="font-bold text-slate-800 text-sm mb-2">Email Address</h4><div class="space-y-2">`;
+                storeSettings.emails.forEach(e => html += `<a href="mailto:${e}" class="block bg-white text-purple-700 font-bold text-sm py-2 px-3 rounded-lg shadow-sm border border-purple-100 truncate text-center">${escapeHTML(e)}</a>`);
+                html += `</div></div></div>`;
+            }
+            
+            content.innerHTML = html || '<p class="text-sm text-slate-400 text-center font-bold bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed">Contact details not available.</p>';
+        }
+
+        async function fetchAboutSections() {
+            const { data } = await supabaseClient.from('about_sections')
+                .select('*')
+                .eq('is_visible', true)
+                .order('sort_order', { ascending: true })
+                .order('created_at', { ascending: true });
+                
+            if(data) {
+                aboutSections = data;
+                renderAboutSections();
+            }
+        }
+
+        function renderAboutSections() {
+            const container = document.getElementById('about-modular-list');
+            if(aboutSections.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">No information available.</p>';
+                return;
+            }
+            
+            let html = '';
+            aboutSections.forEach((section, index) => {
+                const isLast = index === aboutSections.length - 1;
+                const borderClass = isLast ? '' : 'border-b border-slate-100';
+                html += `
+                <button onclick="openAboutPopup('${escapeHTML(section.title.replace(/'/g, "\\'"))}')" class="w-full flex justify-between items-center p-3 hover:bg-slate-50 transition-colors ${borderClass}">
+                    <span class="font-bold text-sm text-slate-700">${escapeHTML(section.title)}</span>
+                    <i class="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
+                </button>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function openAboutPopup(title) {
+            const section = aboutSections.find(s => s.title.toLowerCase() === title.toLowerCase());
+            if(section) {
+                document.getElementById('about-details-title').innerText = section.title;
+                
+                const urlRegex = /(https:\/\/[^\s]+)/g;
+                const linkedText = escapeHTML(section.content).replace(urlRegex, '<a href="$1" target="_blank" class="text-blue-600 font-bold hover:underline" onclick="event.stopPropagation()">$1</a>');
+                document.getElementById('about-details-content').innerHTML = linkedText;
+                
+                document.getElementById('about-details-modal').classList.add('active');
+            } else {
+                showCustomAlert("This section is currently unavailable.", "Not Found", true);
+            }
+        }
+
+        async function fetchCounterPhone() {
+            const { data, error } = await supabaseClient.rpc('get_counter_phone');
+            if(!error && data) counterPhone = data;
+        }
+
+        async function fetchMenu() {
+            const { data } = await supabaseClient.from('pizzas').select('*').neq('visibility', 'Private').order('name');
+            if(data) {
+                menuData = Object.freeze(data.map(p => Object.freeze(p)));
+                renderMenu();
+            }
+        }
+
+        async function fetchOrderHistory() {
+            if(!user) return;
+            const { data } = await supabaseClient.rpc('get_my_orders', { req_user_id: user.id, req_pass: user.password });
+            if(data) {
+                userOrders = data;
+                
+                const lastCancelledCOD = data.find(o => o.status === 'cancelled' && o.payment_method === 'COD');
+                if (lastCancelledCOD) {
+                    const cancelDate = new Date(lastCancelledCOD.created_at);
+                    const validCompleted = data.filter(o => o.status === 'received' && new Date(o.created_at) > cancelDate);
+                    pastOrdersCount = validCompleted.length;
+                } else {
+                    const completed = data.filter(o => o.status === 'received');
+                    pastOrdersCount = completed.length;
+                }
+                
+                activeOrders = data.filter(o => ['pending', 'making', 'on_delivery'].includes(o.status));
+                renderHistory(data);
+                renderHomeActiveOrder(); 
+                checkEligibility();
+                updateFloatingCart(); 
+
+                if (!document.getElementById('shop-closed-screen').classList.contains('hidden')) {
+                    showShopClosedScreen();
+                } else if (!document.getElementById('closed-back-bar').classList.contains('hidden')) {
+                    if (activeOrders.length === 0) {
+                        returnToClosedScreen();
+                    }
+                }
+            }
+        }
+
+        async function refreshUserOrdersManual() {
+            if (!user) return;
+            const btn = document.getElementById('manual-refresh-btn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+            
+            await fetchOrderHistory();
+            
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        }
+
+        function renderHomeActiveOrder() {
+            const container = document.getElementById('home-active-order-container');
+            if (activeOrders.length > 0) {
+                let textStatus = "Making...";
+                if(activeOrders.some(o => o.status === 'on_delivery')) textStatus = "On Delivery!";
+                
+                container.innerHTML = `
+                    <div onclick="switchTab('history')" class="bg-blue-600 text-white p-4 rounded-2xl flex justify-between items-center cursor-pointer shadow-md mb-2">
+                        <div class="flex flex-col">
+                            <span class="font-black text-lg">${activeOrders.length > 1 ? `Active Orders (${activeOrders.length})` : "Active Order"}</span>
+                            <span class="font-medium text-xs text-blue-200">${textStatus}</span>
+                        </div>
+                        <div class="font-bold flex items-center gap-2 bg-blue-700/50 border border-blue-50 px-3 py-1.5 rounded-xl shadow-sm text-sm transition-colors hover:bg-blue-700">
+                            Track <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                    </div>
+                `;
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+        
+        // --- Menu Search & Filter Logic ---
+        function getSellPrice(pizza) {
+            if (pizza.discount_val > 0) {
+                return pizza.discount_type === 'flat' ? pizza.price - pizza.discount_val : pizza.price - (pizza.price * (pizza.discount_val/100));
+            }
+            return pizza.price;
+        }
+
+        function updateSearchQuery(val) { menuState.query = val; renderMenu(); }
+        function togglePrefFilter(pref) { if (menuState.pref === pref) { menuState.pref = 'all'; } else { menuState.pref = pref; } updateFilterUI(); renderMenu(); }
+        function setPrefFilter(pref) { menuState.pref = pref; updateFilterUI(); }
+        function setSortFilter(sort) { menuState.sort = sort; updateFilterUI(); }
+        
+        function clearFilters() {
+            menuState.sort = '';
+            menuState.pref = 'all';
+            updateFilterUI();
+            renderMenu();
+            closePopups();
+        }
+
+        function applyFilters() { renderMenu(); closePopups(); }
+
+        function openFilterModal() {
+            updateFilterUI();
+            document.getElementById('filter-modal').classList.add('active');
+        }
+
+        function updateFilterUI() {
+            const qVeg = document.getElementById('quick-veg-btn');
+            const qNonVeg = document.getElementById('quick-nonveg-btn');
+            
+            qVeg.classList.toggle('border-green-400', menuState.pref === 'veg');
+            qVeg.classList.toggle('bg-green-50', menuState.pref === 'veg');
+            qNonVeg.classList.toggle('border-red-400', menuState.pref === 'nonveg');
+            qNonVeg.classList.toggle('bg-red-50', menuState.pref === 'nonveg');
+
+            ['all', 'veg', 'nonveg'].forEach(p => {
+                const btn = document.getElementById(`pref-btn-${p}`);
+                if(p === menuState.pref) btn.className = "border border-red-500 bg-red-50 text-red-700 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition-colors";
+                else btn.className = "border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition-colors";
+            });
+
+            ['low', 'high'].forEach(s => {
+                const btn = document.getElementById(`sort-btn-${s}`);
+                if(s === menuState.sort) btn.className = "border border-red-500 bg-red-50 text-red-700 py-3 rounded-xl text-sm font-bold transition-colors";
+                else btn.className = "border border-slate-200 bg-white text-slate-600 py-3 rounded-xl text-sm font-bold transition-colors";
+            });
+        }
+
+        // --- Rendering ---
+        function renderMenu() {
+            const list = document.getElementById('pizza-list');
+            list.innerHTML = '';
+            
+            let filteredData = [...menuData].filter(pizza => {
+                if (menuState.pref === 'veg' && !pizza.is_veg) return false;
+                if (menuState.pref === 'nonveg' && pizza.is_veg) return false;
+                
+                if (menuState.query) {
+                    const q = menuState.query.toLowerCase();
+                    const matchName = pizza.name.toLowerCase().includes(q);
+                    const matchIng = (pizza.ingredients || '').toLowerCase().includes(q);
+                    if (!matchName && !matchIng) return false;
+                }
+                return true;
+            });
+
+            if (menuState.sort === 'low') {
+                filteredData.sort((a, b) => getSellPrice(a) - getSellPrice(b));
+            } else if (menuState.sort === 'high') {
+                filteredData.sort((a, b) => getSellPrice(b) - getSellPrice(a));
+            }
+
+            if (filteredData.length === 0) {
+                list.innerHTML = `<div class="col-span-2 text-center text-slate-400 py-10 font-medium bg-slate-50 rounded-2xl border border-slate-200 border-dashed">No items found matching your search.</div>`;
+                return;
+            }
+            
+            filteredData.forEach(pizza => {
+                let badge = '';
+                if(pizza.visibility === 'Unavailable') badge = `<div class="absolute top-2 left-2 bg-yellow-50 border border-yellow-200 text-[9px] font-black px-2 py-1 rounded shadow-sm text-yellow-700 z-10">UNAVAILABLE</div>`;
+                
+                let sellPrice = getSellPrice(pizza);
+                let oldPriceHtml = '';
+                if(pizza.discount_val > 0) {
+                    oldPriceHtml = `<span class="text-[10px] text-slate-400 line-through">₹${pizza.price}</span>`;
+                }
+
+                const img = pizza.photo_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg==';
+                
+                const vegBadgeHtml = pizza.is_veg 
+                    ? `<span class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm border border-white"></span><span class="text-[9px] font-black text-green-700 tracking-wider">VEG</span>` 
+                    : `<span class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm border border-white"></span><span class="text-[9px] font-black text-red-700 tracking-wider">NON-VEG</span>`;
+                
+                const disabled = pizza.visibility === 'Unavailable' ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
+
+                let actionBtnHtml = '';
+                if(cart[pizza.id] && cart[pizza.id].qty > 0) {
+                    actionBtnHtml = `
+                    <div class="flex items-center bg-red-50 border border-red-200 rounded-lg shadow-sm" onclick="event.stopPropagation()">
+                        <button onclick="updateQty('${pizza.id}', -1)" class="w-8 h-8 flex items-center justify-center font-black text-red-600 active:bg-red-200 transition-colors rounded-l-lg">-</button>
+                        <span class="font-bold text-sm text-red-700 w-6 text-center">${cart[pizza.id].qty}</span>
+                        <button onclick="updateQty('${pizza.id}', 1)" class="w-8 h-8 flex items-center justify-center font-black text-red-600 active:bg-red-200 transition-colors rounded-r-lg">+</button>
+                    </div>`;
+                } else {
+                    actionBtnHtml = `
+                    <button onclick="event.stopPropagation(); addToCart('${pizza.id}')" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black text-[11px] px-4 py-2 rounded-lg shadow-sm active:scale-95 transition-all uppercase tracking-wider">
+                        ADD
+                    </button>`;
+                }
+
+                list.innerHTML += `
+                <div class="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm relative flex flex-col cursor-pointer hover:border-red-300 transition-colors ${disabled}" onclick="viewPizzaDetails('${pizza.id}')">
+                    ${badge}
+                    <div class="relative mb-3">
+                        <img src="${img}" class="w-full aspect-square object-cover rounded-xl bg-slate-100 border border-slate-100" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg=='">
+                        <div class="absolute bottom-2 right-2 bg-white/95 backdrop-blur-sm px-2 py-1.5 rounded-lg shadow-sm flex items-center gap-1 border border-slate-100">
+                            ${vegBadgeHtml}
+                        </div>
+                    </div>
+                    
+                    <h3 class="font-black text-sm text-slate-800 leading-tight mb-1">${highlightMatch(pizza.name, menuState.query)}</h3>
+                    <p class="text-[10px] text-slate-500 line-clamp-2 mb-3 leading-snug">${highlightMatch(pizza.ingredients || 'Premium quality ingredients.', menuState.query)}</p>
+                    
+                    <div class="flex justify-between items-end mt-auto pt-2 border-t border-slate-50">
+                        <div class="flex flex-col leading-none">
+                            <span class="font-black text-slate-900 text-lg">₹${Math.round(sellPrice)}</span>
+                            ${oldPriceHtml}
+                        </div>
+                        ${actionBtnHtml}
+                    </div>
+                </div>`;
+            });
+        }
+
+        // --- Pizza Details Modal Logic ---
+        function updateDetViewCartBanner() {
+            let qty = 0;
+            Object.keys(cart).forEach(id => { qty += cart[id].qty; });
+            const banner = document.getElementById('det-view-cart-banner');
+            if(qty > 0) {
+                document.getElementById('det-cart-qty-text').innerText = `${qty} ITEM${qty > 1 ? 'S' : ''}`;
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function viewPizzaDetails(id) {
+            const pizza = menuData.find(p => p.id === id);
+            if(!pizza) return;
+            
+            document.getElementById('det-img').src = pizza.photo_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg==';
+            
+            const vegBadgeHtml = pizza.is_veg 
+                ? `<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-[10px] font-black text-green-700 tracking-wider">VEG</span>` 
+                : `<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-[10px] font-black text-red-700 tracking-wider">NON-VEG</span>`;
+            document.getElementById('det-veg').innerHTML = vegBadgeHtml;
+            
+            document.getElementById('det-title').innerText = pizza.name;
+            document.getElementById('det-ing').innerText = pizza.ingredients || 'Freshly baked to order with premium ingredients.';
+            
+            let sellPrice = getSellPrice(pizza);
+            if(pizza.discount_val > 0) {
+                document.getElementById('det-old-price').innerText = `₹${pizza.price}`;
+            } else {
+                document.getElementById('det-old-price').innerText = '';
+            }
+            document.getElementById('det-price').innerText = `₹${Math.round(sellPrice)}`;
+
+            updatePizzaDetailsActionBtn(id, sellPrice);
+            document.getElementById('pizza-details-modal').classList.add('active');
+        }
+
+        function updatePizzaDetailsActionBtn(id, sellPrice) {
+            const container = document.getElementById('det-action-container');
+            if(cart[id] && cart[id].qty > 0) {
+                container.innerHTML = `
+                <div class="flex items-center gap-3 bg-red-50 border border-red-200 text-red-600 rounded-xl p-1 shadow-sm">
+                    <button onclick="updateQty('${id}', -1); updatePizzaDetailsActionBtn('${id}', ${sellPrice})" class="w-10 h-10 flex items-center justify-center font-black text-xl active:bg-red-200 rounded-lg transition-colors">-</button>
+                    <span class="font-black text-lg min-w-[20px] text-center">${cart[id].qty}</span>
+                    <button onclick="updateQty('${id}', 1); updatePizzaDetailsActionBtn('${id}', ${sellPrice})" class="w-10 h-10 flex items-center justify-center font-black text-xl active:bg-red-200 rounded-lg transition-colors">+</button>
+                </div>`;
+            } else {
+                container.innerHTML = `
+                <button onclick="addToCart('${id}'); updatePizzaDetailsActionBtn('${id}', ${sellPrice})" class="bg-red-600 hover:bg-red-700 text-white font-black py-3 px-8 rounded-xl shadow-lg transition-transform active:scale-95">
+                    ADD TO CART
+                </button>`;
+            }
+            updateDetViewCartBanner();
+        }
+
+        // --- Cart Logic ---
+        function loadCart() {
+            const saved = localStorage.getItem('pal_cart');
+            if(saved) {
+                try { cart = JSON.parse(saved); } 
+                catch(e) { cart = {}; }
+            }
+        }
+        function saveCart() {
+            localStorage.setItem('pal_cart', JSON.stringify(cart));
+        }
+
+        function addToCart(id) {
+            if(!cart[id]) {
+                const pizza = menuData.find(p => p.id === id);
+                let sellPrice = getSellPrice(pizza);
+                cart[id] = { data: pizza, qty: 1, sellPrice: Math.round(sellPrice), notes: '' };
+            } else {
+                cart[id].qty++;
+            }
+            saveCart();
+            updateFloatingCart();
+            renderMenu(); 
+            renderCart();
+        }
+
+        function updateQty(id, change) {
+            if(cart[id]) {
+                cart[id].qty += change;
+                if(cart[id].qty <= 0) delete cart[id];
+            }
+            saveCart();
+            updateFloatingCart();
+            renderMenu(); 
+            renderCart();
+        }
+
+        function updateNotes(id, val) {
+            if(cart[id]) {
+                cart[id].notes = val;
+                saveCart();
+            }
+        }
+
+        function handleNoteInput(id, el) {
+            let words = el.value.trim().split(/\s+/).filter(w => w.length > 0);
+            if (words.length > 100) {
+                words = words.slice(0, 100);
+                el.value = words.join(' ') + ' '; 
+            }
+            
+            const count = words.length;
+            const counterEl = document.getElementById(`note-count-${id}`);
+            
+            counterEl.innerText = `${count}/100 words`;
+            if (count > 90) {
+                counterEl.className = "text-[10px] text-red-500 text-right mt-1 font-bold";
+            } else {
+                counterEl.className = "text-[10px] text-slate-400 text-right mt-1 font-medium";
+            }
+            
+            updateNotes(id, el.value);
+        }
+
+        function updateFloatingCart() {
+            let qty = 0, total = 0;
+            const validItems = [];
+            
+            Object.keys(cart).forEach(id => {
+                const dbPizza = menuData.find(p => p.id === id);
+                if (dbPizza) {
+                    qty += cart[id].qty;
+                    total += (Math.round(getSellPrice(dbPizza)) * cart[id].qty);
+                    validItems.push({ id, dbPizza, qty: cart[id].qty });
+                }
+            });
+
+            const cartBadge = document.getElementById('cart-badge');
+            const histBadge = document.getElementById('history-badge');
+            
+            if(qty > 0) {
+                cartBadge.innerText = qty > 9 ? '9+' : qty;
+                cartBadge.classList.remove('hidden');
+            } else {
+                cartBadge.classList.add('hidden');
+            }
+
+            if(activeOrders.length > 0) {
+                histBadge.innerText = activeOrders.length;
+                histBadge.classList.remove('hidden');
+            } else {
+                histBadge.classList.add('hidden');
+            }
+
+            const cartBtnContainer = document.getElementById('floating-cart-container');
+            const cartBtn = document.getElementById('floating-cart-btn');
+            const onCartScreen = document.getElementById('screen-cart').classList.contains('active');
+
+            if(qty > 0 && !onCartScreen) {
+                let cartImagesHTML = '';
+                validItems.slice(0, 3).forEach((item, index) => {
+                    const img = item.dbPizza.photo_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg==';
+                    cartImagesHTML += `<img src="${img}" class="w-8 h-8 rounded-full border-2 border-green-600 object-cover bg-white relative shadow-sm" style="z-index: ${3-index};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg=='">`;
+                });
+                document.getElementById('float-cart-images').innerHTML = cartImagesHTML;
+
+                document.getElementById('float-qty').innerText = `${qty} ITEM${qty>1?'S':''}`;
+                
+                cartBtn.classList.remove('hidden');
+                cartBtnContainer.classList.remove('translate-y-[200px]');
+            } else {
+                cartBtnContainer.classList.add('translate-y-[200px]');
+                setTimeout(() => cartBtn.classList.add('hidden'), 300);
+            }
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-items-container');
+            container.innerHTML = '';
+            
+            let baseTotal = 0;
+            let finalTotal = 0;
+            let capWarning = false;
+
+            if(Object.keys(cart).length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-400 py-10 font-medium bg-slate-50 rounded-2xl border border-slate-200 border-dashed">Your cart is empty. Add some delicious pizzas!</div>`;
+                document.getElementById('bill-panel').classList.add('hidden');
+                document.getElementById('payment-action-container').classList.add('hidden');
+                return;
+            }
+
+            Object.keys(cart).forEach(id => {
+                const item = cart[id];
+                const serverPizza = menuData.find(p => p.id === id);
+                if (!serverPizza) return;
+
+                const realBasePrice = serverPizza.price;
+                const realSellPrice = Math.round(getSellPrice(serverPizza));
+
+                baseTotal += (realBasePrice * item.qty);
+                finalTotal += (realSellPrice * item.qty);
+
+                const img = serverPizza.photo_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg==';
+
+                let initialWords = item.notes.trim().split(/\s+/).filter(w => w.length > 0).length;
+                if(item.notes.trim() === '') initialWords = 0;
+                let countColor = initialWords > 90 ? 'text-red-500 font-bold' : 'text-slate-400 font-medium';
+
+                container.innerHTML += `
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+                    <div class="flex gap-3 items-center">
+                        <img src="${img}" class="w-16 h-16 rounded-xl object-cover bg-slate-100 border border-slate-100" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxIDEnPjwvc3ZnPg=='">
+                        <div class="flex-1">
+                            <h4 class="font-bold text-sm text-slate-800 leading-tight mb-1">${serverPizza.name}</h4>
+                            <p class="font-black text-red-600">₹${realSellPrice}</p>
+                        </div>
+                        <div class="flex items-center bg-red-50 border border-red-200 rounded-lg shadow-sm">
+                            <button onclick="updateQty('${id}', -1)" class="w-8 h-8 flex items-center justify-center font-black text-red-600 active:bg-red-200 rounded-l-lg transition-colors">-</button>
+                            <span class="font-bold text-sm text-red-700 w-6 text-center">${item.qty}</span>
+                            <button onclick="updateQty('${id}', 1)" class="w-8 h-8 flex items-center justify-center font-black text-red-600 active:bg-red-200 rounded-r-lg transition-colors">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <textarea rows="3" placeholder="Customise order (Max 100 words, e.g. Extra spicy, no onion)" oninput="handleNoteInput('${id}', this)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none focus:border-red-400 text-slate-700 transition-colors resize-none">${item.notes}</textarea>
+                        <p id="note-count-${id}" class="text-[10px] ${countColor} text-right mt-1">${initialWords}/100 words</p>
+                    </div>
+                </div>`;
+            });
+
+            if (addressDetails && addressDetails.distance !== undefined) {
+                let distKm = Math.max(0, addressDetails.distance / 1000); 
+                deliveryFee = Math.ceil(distKm) * (storeSettings.charge_per_km || 0);
+                if (distKm > (storeSettings.cap_dist || 2)) {
+                    if (finalTotal < (storeSettings.min_cap_amount || 500)) {
+                        capWarning = true;
+                    }
+                }
+            } else {
+                deliveryFee = storeSettings.charge_per_km || 40; 
+            }
+
+            if (storeSettings.free_delivery_above > 0 && finalTotal >= storeSettings.free_delivery_above) {
+                deliveryFee = 0;
+            }
+
+            document.getElementById('bill-panel').classList.remove('hidden');
+            document.getElementById('payment-action-container').classList.remove('hidden');
+            
+            document.getElementById('bill-base').innerText = `₹${baseTotal}`;
+            if(baseTotal > finalTotal) {
+                document.getElementById('discount-row').classList.remove('hidden');
+                document.getElementById('discount-row').classList.add('flex');
+                document.getElementById('bill-discount').innerText = `- ₹${baseTotal - finalTotal}`;
+            } else {
+                document.getElementById('discount-row').classList.add('hidden');
+            }
+            
+            document.getElementById('bill-delivery').innerText = deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`;
+            document.getElementById('bill-delivery').className = deliveryFee === 0 ? 'font-bold text-green-600' : 'text-slate-500 font-medium';
+
+            if (storeSettings.free_delivery_above > 0) {
+                document.getElementById('free-del-msg').innerText = `(Free Delivery on order above ₹${storeSettings.free_delivery_above})`;
+                document.getElementById('free-del-msg').classList.remove('hidden');
+            } else {
+                document.getElementById('free-del-msg').classList.add('hidden');
+            }
+
+            const toPay = finalTotal + deliveryFee;
+            document.getElementById('bill-total').innerText = `₹${toPay}`;
+
+            const payBtn = document.getElementById('proceed-pay-btn');
+            const capMsg = document.getElementById('cap-warning-msg');
+            
+            if(capWarning) {
+                payBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                payBtn.onclick = null;
+                capMsg.innerText = `Minimum order value ₹${storeSettings.min_cap_amount} required for your distance.`;
+                capMsg.classList.remove('hidden');
+            } else {
+                payBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                payBtn.onclick = processPayment;
+                capMsg.classList.add('hidden');
+            }
+        }
+
+        // --- MAP & ADDRESS LOGIC ---
+        function openAddressModal() {
+            document.getElementById('address-form-modal').classList.add('active');
+            
+            if(addressDetails) {
+                document.getElementById('addr-full').value = addressDetails.full || '';
+                document.getElementById('addr-city').value = addressDetails.city || '';
+                document.getElementById('addr-pin').value = addressDetails.pin || '';
+                document.getElementById('addr-landmark').value = addressDetails.landmark || '';
+                document.getElementById('addr-inst').value = addressDetails.inst || '';
+                
+                if (!currentCoords && addressDetails.lat && addressDetails.lng) {
+                    currentCoords = L.latLng(addressDetails.lat, addressDetails.lng);
+                }
+            }
+            updateMapBannerUI();
+        }
+
+        function updateMapBannerUI() {
+            const title = document.getElementById('map-banner-title');
+            const sub = document.getElementById('map-banner-sub');
+            const icon = document.getElementById('map-banner-icon');
+            const banner = document.getElementById('map-banner');
+
+            const lat = currentCoords ? currentCoords.lat : (addressDetails ? addressDetails.lat : null);
+            const lng = currentCoords ? currentCoords.lng : (addressDetails ? addressDetails.lng : null);
+
+            if(lat && lng) {
+                title.innerText = "Location Selected";
+                title.className = "font-black text-green-700 text-sm";
+                sub.innerText = `${lat.toFixed(4)}, ${lng.toFixed(4)} - Tap to edit`;
+                sub.className = "text-[10px] font-bold text-green-600 uppercase tracking-widest";
+                icon.className = "w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white shadow-sm border border-green-600 shrink-0";
+                icon.innerHTML = '<i class="fa-solid fa-check"></i>';
+                banner.className = "bg-green-50 border border-green-200 rounded-2xl p-4 mb-5 flex justify-between items-center cursor-pointer shadow-sm hover:bg-green-100 transition-colors";
+            } else {
+                title.innerText = "Choose on Map";
+                title.className = "font-black text-blue-900 text-sm";
+                sub.innerText = "Tap to set exact location";
+                sub.className = "text-[10px] font-bold text-blue-600 uppercase tracking-widest";
+                icon.className = "w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 shadow-sm border border-blue-100 shrink-0";
+                icon.innerHTML = '<i class="fa-solid fa-map-location-dot"></i>';
+                banner.className = "bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-5 flex justify-between items-center cursor-pointer shadow-sm hover:bg-blue-100 transition-colors";
+            }
+        }
+
+        function openFullscreenMap() {
+            document.getElementById('map-fullscreen-modal').classList.add('active');
+            
+            if(!map) {
+                setTimeout(() => {
+                    map = L.map('map', { zoomControl: false }).setView(STORE_COORDS, 16);
+                    
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                        maxZoom: 19
+                    }).addTo(map);
+
+                    const offset = 4.5;
+                    const maxBounds = L.latLngBounds(
+                        [STORE_COORDS[0] - offset, STORE_COORDS[1] - offset],
+                        [STORE_COORDS[0] + offset, STORE_COORDS[1] + offset]
+                    );
+                    map.setMaxBounds(maxBounds);
+                    map.options.minZoom = 7; 
+
+                    L.marker(STORE_COORDS, {
+                        icon: L.divIcon({ html: '<div class="text-3xl text-red-600 drop-shadow-md"><i class="fa-solid fa-pizza-slice"></i></div>', className: 'store-icon', iconSize: [30, 30], iconAnchor: [15, 30] })
+                    }).addTo(map);
+
+                    const radiusMeters = storeSettings.delivery_range * 1000;
+                    L.circle(STORE_COORDS, { radius: radiusMeters, color: '#ef4444', fillColor: '#fca5a5', fillOpacity: 0.15, weight: 2, dashArray: '5, 5' }).addTo(map);
+
+                    userMarker = L.marker(STORE_COORDS, {
+                        icon: L.divIcon({ html: '<div class="text-4xl text-blue-600 drop-shadow-xl animate-bounce"><i class="fa-solid fa-location-dot"></i></div>', className: 'user-icon', iconSize: [30, 40], iconAnchor: [15, 40] }),
+                        draggable: true
+                    }).addTo(map);
+
+                    userMarker.on('dragend', function(event) {
+                        currentCoords = event.target.getLatLng();
+                        validateLocation(currentCoords, true);
+                    });
+
+                    map.on('click', function(e) {
+                        userMarker.setLatLng(e.latlng);
+                        currentCoords = e.latlng;
+                        validateLocation(currentCoords, true);
+                    });
+
+                    if(addressDetails && addressDetails.lat && addressDetails.lng) {
+                        const savedLatLng = L.latLng(addressDetails.lat, addressDetails.lng);
+                        map.setView(savedLatLng, 17);
+                        userMarker.setLatLng(savedLatLng);
+                        currentCoords = savedLatLng;
+                        validateLocation(savedLatLng, false);
+                    } else {
+                        locateMe();
+                    }
+                }, 150); 
+            } else {
+                map.invalidateSize();
+                if(addressDetails && addressDetails.lat && addressDetails.lng) {
+                    map.setView(L.latLng(addressDetails.lat, addressDetails.lng), 17);
+                } else if (currentCoords) {
+                    map.setView(currentCoords, 17);
+                }
+            }
+        }
+        
+        function closeMapFullscreen() {
+            document.getElementById('map-fullscreen-modal').classList.remove('active');
+        }
+
+        function confirmMapLocation() {
+            if(!currentCoords) return showCustomAlert("Please tap on the map to select your location.", "Map Notice", true);
+            if(!isWithinRange) {
+                showCustomAlert("The selected location is outside our delivery range. Please move the pin closer to the store.", "Out of Range", true);
+                return;
+            }
+            closeMapFullscreen();
+            updateMapBannerUI();
+        }
+
+        function locateMe() {
+            const btn = document.getElementById('locate-me-btn');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-xl"></i><span class="font-bold text-xs uppercase tracking-widest ml-1">Wait...</span>';
+
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                        if(map) {
+                            map.setView(latlng, 17);
+                            if(userMarker) userMarker.setLatLng(latlng);
+                        }
+                        currentCoords = latlng;
+                        validateLocation(latlng, false);
+                        if(btn) btn.innerHTML = '<i class="fa-solid fa-location-crosshairs text-lg"></i>';
+                    }, 
+                    (err) => {
+                        console.warn("Location Error:", err);
+                        showCustomAlert("We couldn't automatically find you. Please pan the map manually.", "Location Notice");
+                        if(btn) btn.innerHTML = '<i class="fa-solid fa-location-crosshairs text-lg"></i>';
+                    },
+                    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+                );
+            } else {
+                showCustomAlert("Geolocation is not supported. Please pan the map.", "GPS Notice");
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-location-crosshairs text-lg"></i>';
+            }
+        }
+
+        function validateLocation(latlng, showWarn = true) {
+            if(!map) return;
+            tempDistance = map.distance(STORE_COORDS, latlng); 
+            const maxMeters = storeSettings.delivery_range * 1000;
+            if(tempDistance > maxMeters) {
+                isWithinRange = false;
+                if (showWarn) showCustomAlert("You have placed the pin outside our delivery range. Please adjust the location.", "Out of Range", true);
+            } else {
+                isWithinRange = true;
+            }
+        }
+
+        async function saveAddress() {
+            if(!currentCoords) {
+                document.getElementById('map-pin-missing-modal').classList.add('active');
+                return;
+            }
+            if(!isWithinRange) return showCustomAlert("The selected map location is outside our delivery bounds.", "Out of Range", true);
+            
+            const full = document.getElementById('addr-full').value.trim();
+            const city = document.getElementById('addr-city').value.trim();
+            const pin = document.getElementById('addr-pin').value.trim();
+            const landmark = document.getElementById('addr-landmark').value.trim();
+            const inst = document.getElementById('addr-inst').value.trim();
+
+            if(!full || !city || !pin) { 
+                showCustomAlert("Please fill the Full Address, City, and Pincode fields to proceed.", "Missing Info", true); 
+                return; 
+            }
+
+            addressDetails = { lat: currentCoords.lat, lng: currentCoords.lng, full, city, pin, landmark, inst, distance: tempDistance };
+
+            if(user) {
+                await supabaseClient.rpc('update_user_address', { req_id: user.id, new_address: addressDetails, req_pass: user.password });
+                user.saved_address = addressDetails;
+                localStorage.setItem('pal_user', JSON.stringify(user));
+            }
+
+            updateAddressUI();
+            renderCart(); 
+            document.getElementById('address-form-modal').classList.remove('active');
+        }
+
+        function updateAddressUI() {
+            if(!addressDetails) return;
+            const html = `
+                <p class="font-bold text-slate-800">${escapeHTML(addressDetails.full)}</p>
+                <p>${escapeHTML(addressDetails.city)} - ${escapeHTML(addressDetails.pin)}</p>
+                ${addressDetails.landmark ? `<p class="text-xs mt-1"><i class="fa-solid fa-map-pin mr-1 opacity-50"></i>${escapeHTML(addressDetails.landmark)}</p>` : ''}
+            `;
+            document.getElementById('display-address').innerHTML = html;
+            document.getElementById('prof-display-address').innerHTML = html;
+        }
+
+        // --- PAYMENT & CHECKOUT ---
+        function checkEligibility() {
+            const codBtn = document.getElementById('btn-cod');
+            const msg = document.getElementById('cod-eligible-msg');
+            
+            if(pastOrdersCount >= 5) {
+                codBtn.classList.remove('hidden');
+                msg.classList.remove('hidden');
+            } else {
+                codBtn.classList.add('hidden');
+                msg.classList.add('hidden');
+            }
+        }
+
+        async function processPayment() {
+            if(!user) {
+                document.getElementById('auth-modal').classList.add('active');
+                return;
+            }
+            if(!addressDetails) { 
+                document.getElementById('address-missing-modal').classList.add('active');
+                return; 
+            }
+
+            const btn = document.getElementById('proceed-pay-btn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying...';
+            btn.disabled = true;
+
+            const { data: storeData } = await supabaseClient.from('store_settings').select('is_open').eq('id', 1).single();
+            if (storeData && storeData.is_open === false) {
+                storeSettings.is_open = false;
+                btn.innerHTML = orig;
+                btn.disabled = false;
+                showShopClosedScreen();
+                return;
+            }
+
+            const { data: rpcData } = await supabaseClient.rpc('check_user_status', { req_id: user.id });
+            const userData = rpcData && rpcData.length > 0 ? rpcData[0] : null;
+            if (userData) {
+                if (userData.is_deleted) {
+                    alert("Your account has been deleted.");
+                    logOutAndReload();
+                    return;
+                }
+                if (userData.is_blocked) {
+                    btn.innerHTML = orig;
+                    btn.disabled = false;
+                    showBlockedScreen();
+                    return;
+                }
+            }
+
+            btn.innerHTML = orig;
+            btn.disabled = false;
+            
+            document.getElementById('payment-choice-modal').classList.add('active');
+        }
+
+        async function placeOrderCOD() {
+            closePopups();
+            await finalizeOrder('COD', 'pending');
+        }
+
+        async function initRazorpay() {
+            try {
+                const btn = document.getElementById('pay-online-btn');
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = `<div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-circle-notch fa-spin"></i></div><div class="text-left"><p class="font-bold text-slate-800 text-sm">Processing...</p><p class="text-[10px] text-slate-400 font-medium">Please wait</p></div></div>`;
+                btn.disabled = true;
+
+                // Edge Function handles creating Razorpay Order 
+                const { data: orderData, error: orderError } = await supabaseClient.functions.invoke('razorpay', {
+                    body: { action: 'create', cart: cart, delivery_fee: deliveryFee }
+                });
+
+                btn.innerHTML = origHtml;
+                btn.disabled = false;
+
+                if (orderError || !orderData?.order_id) {
+                    console.error("Order Creation Error:", orderError);
+                    showCustomAlert("Failed to initialize payment gateway. Please try again.", "Error", true);
+                    return;
+                }
+
+                var options = {
+                    "key": RAZORPAY_KEY_ID, 
+                    "currency": "INR",
+                    "name": "Pal Pizza",
+                    "description": "Pizza Delivery",
+                    "image": "https://ahlbrwlwtvbwbvgjpkvz.supabase.co/storage/v1/object/public/assets/palfav.png", 
+                    "order_id": orderData.order_id, 
+                    "prefill": { 
+                        "name": user.name || "Customer", 
+                        "email": user.email || "support@palpizza.com", 
+                        "contact": user.phone ? user.phone.toString() : "" 
+                    },
+                    "theme": { "color": "#dc2626" } 
+                };
+
+                const handleSuccess = async function(response) {
+                    closePopups();
+                    document.getElementById('payment-processing-overlay').classList.add('active');
+                    
+                    try {
+                        let pay_id = response.razorpay_payment_id || response;
+                        let ord_id = response.razorpay_order_id || orderData.order_id;
+                        let sig = response.razorpay_signature || "";
+
+                        const pin = Math.floor(1000 + Math.random() * 9000);
+                        const payload = {
+                            user_id: user.id,
+                            items: cart, 
+                            subtotal: calculateBaseTotal(),
+                            delivery_fee: Math.max(0, deliveryFee),
+                            total: calculateTotal(),
+                            delivery_address: addressDetails,
+                            status: 'making',
+                            otp: pin.toString()
+                        };
+
+                        const { data: verifyData, error: verifyError } = await supabaseClient.functions.invoke('razorpay', {
+                            body: { 
+                                action: 'verify',
+                                razorpay_payment_id: pay_id,
+                                razorpay_order_id: ord_id,
+                                razorpay_signature: sig,
+                                order_payload: payload 
+                            }
+                        });
+                        
+                        if (verifyError) throw verifyError;
+                        
+                        if (verifyData?.success) {
+                            cart = {}; 
+                            saveCart();
+                            updateFloatingCart();
+                            renderMenu();
+                            renderCart();
+                            await fetchOrderHistory(); 
+                            switchTab('history');
+                        } else {
+                            console.error("Verification Error:", verifyError);
+                            showCustomAlert("Payment verification failed! If money was deducted, it will be refunded automatically.", "Verification Failed", true);
+                        }
+                    } catch (err) {
+                        console.error("Verification Exception:", err);
+                        showCustomAlert("An error occurred during payment verification.", "Error", true);
+                    } finally {
+                        document.getElementById('payment-processing-overlay').classList.remove('active');
+                    }
+                };
+
+                const handleError = function(error) {
+                    document.getElementById('payment-processing-overlay').classList.remove('active');
+                    let msg = "Transaction cancelled";
+                    if (error) {
+                        if (error.description) msg = error.description;
+                        else if (error.reason) msg = error.reason;
+                        else if (error.code) msg = `Error Code: ${error.code}`;
+                        else if (typeof error === 'string') msg = error;
+                        else msg = JSON.stringify(error);
+                    }
+                    showCustomAlert("Payment Failed: " + msg, "Transaction Failed", true);
+                };
+
+                options.handler = handleSuccess;
+                options.modal = {
+                    "ondismiss": function(){
+                            document.getElementById('payment-processing-overlay').classList.remove('active');
+                    }
+                };
+                var rzp1 = new Razorpay(options);
+                rzp1.on('payment.failed', function (response){
+                    handleError(response.error);
+                });
+                rzp1.open();
+
+            } catch (err) {
+                console.error("Payment Exception:", err);
+                document.getElementById('payment-processing-overlay').classList.remove('active');
+                showCustomAlert("An error occurred while processing payment.", "Error", true);
+            }
+        }
+
+        function calculateBaseTotal() {
+            let t = 0;
+            Object.keys(cart).forEach(id => {
+                const pizza = menuData.find(p => p.id === id);
+                if (pizza) {
+                    let sellPrice = getSellPrice(pizza);
+                    t += (Math.round(sellPrice) * cart[id].qty);
+                }
+            });
+            return t;
+        }
+
+        function calculateTotal() { return calculateBaseTotal() + Math.max(0, deliveryFee); }
+
+        // ONLY used for COD inserts
+        async function finalizeOrder(method, paymentStatus) {
+            const pin = Math.floor(1000 + Math.random() * 9000);
+            
+            const payload = {
+                user_id: user.id,
+                items: cart, 
+                subtotal: calculateBaseTotal(),
+                delivery_fee: Math.max(0, deliveryFee),
+                total: calculateTotal(),
+                delivery_address: addressDetails,
+                payment_method: method,
+                payment_status: paymentStatus,
+                status: 'making',
+                otp: pin.toString() 
+            };
+
+            const { error } = await supabaseClient.from('orders').insert([payload]);
+            if(!error) {
+                cart = {}; 
+                saveCart();
+                updateFloatingCart();
+                renderMenu();
+                renderCart();
+                fetchOrderHistory(); 
+                switchTab('history');
+            } else {
+                showCustomAlert("Failed to place order: " + error.message, "Order Error", true);
+            }
+        }
+
+        // --- History & Tracking ---
+        function renderHistory(orders) {
+            const list = document.getElementById('order-history-list');
+            const activeList = document.getElementById('active-orders-list');
+            list.innerHTML = '';
+            activeList.innerHTML = '';
+            
+            if(activeOrders.length > 0) {
+                activeOrders.forEach(o => {
+                    let itemsDesc = [];
+                    Object.values(o.items).forEach(i => itemsDesc.push(`${i.data.name} x${i.qty}`));
+                    
+                    let contactRole = "Store Counter";
+                    let contactName = "Pal Pizza Support";
+                    let contactPhone = counterPhone || "";
+                    if (o.status === 'on_delivery') {
+                        contactRole = "Delivery Partner";
+                        contactName = o.rider_name || "Assigned Rider";
+                        contactPhone = o.rider_phone || "";
+                    }
+                    
+                    let callBtnHtml = contactPhone ? `<a href="tel:${contactPhone}" onclick="event.stopPropagation()" class="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors"><i class="fa-solid fa-phone"></i></a>` : '';
+
+                    activeList.innerHTML += `
+                    <div class="bg-white border border-blue-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:border-blue-400 transition-colors mb-3" onclick="openOrderDetails('${o.id}')">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-2 mb-2">
+                            <span class="text-xs font-bold text-slate-500">Order #${o.id.substring(0,8)}</span>
+                            <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">${o.status.replace('_', ' ')}</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-800 mb-3 line-clamp-2">${itemsDesc.join(', ')}</p>
+                        
+                        <div class="flex items-center justify-between bg-slate-50 p-2 rounded-xl mb-2 border border-slate-100">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-red-50 border border-red-100 text-red-600 px-2 py-1 rounded-lg text-center">
+                                    <p class="text-[8px] font-bold uppercase tracking-widest leading-none mb-0.5">PIN</p>
+                                    <p class="font-black text-sm leading-none">${o.otp}</p>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">${contactRole}</span>
+                                    <span class="text-xs font-bold text-slate-700">${contactName}</span>
+                                </div>
+                            </div>
+                            ${callBtnHtml}
+                        </div>
+
+                        <div class="flex justify-between items-center mt-2">
+                            <span class="text-[10px] text-slate-500 font-medium">Tap to view full details</span>
+                            <span class="font-black text-slate-900 text-lg">₹${o.total}</span>
+                        </div>
+                    </div>`;
+                });
+            } else {
+                activeList.innerHTML = `<p class="text-sm text-slate-400 font-medium bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-center">No active orders.</p>`;
+            }
+
+            const past = orders.filter(o => o.status === 'received' || o.status === 'cancelled');
+            if(past.length === 0) {
+                list.innerHTML = `<p class="text-sm text-slate-400 font-medium bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-center">No past orders found.</p>`;
+                return;
+            }
+
+            let currentLabel = '';
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const todayStr = today.toDateString();
+            const yesterdayStr = yesterday.toDateString();
+
+            past.forEach(o => {
+                const d = new Date(o.created_at);
+                const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                
+                let label = '';
+                if (d.toDateString() === todayStr) label = 'Today';
+                else if (d.toDateString() === yesterdayStr) label = 'Yesterday';
+                else label = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', weekday: 'long' });
+
+                if (label !== currentLabel) {
+                    list.innerHTML += `<h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mt-6 mb-3 px-1 border-b border-slate-100 pb-2">${label}</h3>`;
+                    currentLabel = label;
+                }
+
+                const displayStatus = o.status === 'received' ? 'Delivered' : 'Cancelled';
+                
+                let itemsDesc = [];
+                Object.values(o.items).forEach(i => itemsDesc.push(`${i.data.name} x${i.qty}`));
+
+                let statusBadge = o.status === 'received' 
+                    ? `<span class="text-xs font-bold text-green-600">${displayStatus}</span>` 
+                    : `<span class="text-xs font-bold text-red-600">${displayStatus}</span>`;
+
+                list.innerHTML += `
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:border-slate-300 transition-colors mb-3" onclick="openOrderDetails('${o.id}')">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-2 mb-2">
+                        <span class="text-xs font-bold text-slate-500">${timeStr}</span>
+                        ${statusBadge}
+                    </div>
+                    <p class="text-sm font-medium text-slate-600 mb-2 truncate">${itemsDesc.join(', ')}</p>
+                    <div class="flex justify-between items-end">
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">${o.payment_method}</p>
+                        <p class="font-black text-slate-900 text-lg">₹${o.total}</p>
+                    </div>
+                </div>`;
+            });
+        }
+
+        // --- NEW SECURE ORDER FETCH ---
+        function openOrderDetails(id) {
+            const o = userOrders.find(x => x.id === id);
+            if(!o) return;
+
+            const date = new Date(o.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+            document.getElementById('aod-date').innerText = date;
+            
+            let statusTxt = o.status.replace('_', ' ');
+            if(o.status === 'received') statusTxt = "Delivered";
+            else if(o.status === 'cancelled') statusTxt = "Cancelled";
+            document.getElementById('aod-status').innerText = statusTxt;
+
+            let itemsHtml = '';
+            Object.values(o.items).forEach(i => {
+                itemsHtml += `<div class="flex justify-between border-b border-slate-100 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0"><span>${i.data.name} <span class="text-slate-400 font-normal">x${i.qty}</span></span> <span class="font-bold">₹${i.sellPrice * i.qty}</span></div>`;
+            });
+            document.getElementById('aod-items').innerHTML = itemsHtml;
+
+            document.getElementById('aod-subtotal').innerText = `₹${o.subtotal}`;
+            document.getElementById('aod-fee').innerText = `₹${o.delivery_fee}`;
+            document.getElementById('aod-total').innerText = `₹${o.total}`;
+
+            document.getElementById('aod-pin').innerText = o.otp;
+
+            const contactRole = document.getElementById('aod-contact-role');
+            const contactName = document.getElementById('aod-contact-name');
+            const contactBtn = document.getElementById('aod-contact-btn');
+
+            if (o.status === 'making' || o.status === 'pending') {
+                contactRole.innerText = "Store Counter";
+                contactName.innerText = "Pal Pizza Support";
+                contactBtn.href = counterPhone ? `tel:${counterPhone}` : "#";
+            } else if (o.status === 'on_delivery') {
+                contactRole.innerText = "Delivery Partner";
+                contactName.innerText = o.rider_name || "Assigned Rider";
+                contactBtn.href = o.rider_phone ? `tel:${o.rider_phone}` : "#";
+            } 
+
+            if(o.status === 'received' || o.status === 'cancelled') {
+                document.getElementById('aod-pin-panel').classList.add('hidden');
+                document.getElementById('aod-contact-panel').classList.add('hidden');
+            } else {
+                document.getElementById('aod-pin-panel').classList.remove('hidden');
+                document.getElementById('aod-contact-panel').classList.remove('hidden');
+            }
+
+            document.getElementById('active-order-details-modal').classList.add('active');
+        }
+    </script>
+</body>
+</html>
